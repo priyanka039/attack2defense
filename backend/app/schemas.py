@@ -136,10 +136,11 @@ class JobOut(BaseModel):
 class TrainingRequest(BaseModel):
     name: str | None = Field(default=None, max_length=60)
     model: Literal["small_cnn", "resnet18"] = "small_cnn"
-    mode: Literal["clean", "fgsm", "pgd"] = "pgd"
+    mode: Literal["clean", "fgsm", "pgd", "gaussian"] = "pgd"
     epsilon: Epsilon = 2 / 255
     pgd_steps: int = Field(default=3, ge=1, le=20)
     adv_ratio: float = Field(default=1.0, ge=0, le=1)
+    sigma: float = Field(default=0.25, gt=0, le=1)
     epochs: int = Field(default=2, ge=1)
     batch_size: int = Field(default=128, ge=8, le=512)
     lr: float = Field(default=1e-3, gt=0, le=1)
@@ -165,3 +166,13 @@ class EvaluationRequest(BaseModel):
     @classmethod
     def _unique(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))
+
+
+class CertifyRequest(BaseModel):
+    model_id: str
+    dataset: str = "cifar10"
+    sigma: float = Field(default=0.25, gt=0, le=1)
+    n0: int = Field(default=25, ge=10, le=200)
+    n: int = Field(default=100, ge=20, le=2000)
+    alpha: float = Field(default=0.001, gt=0, lt=0.5)
+    images_per_class: int = Field(default=5, ge=1, le=50)

@@ -9,6 +9,7 @@ import pandas as pd
 
 from attack2defense import __version__
 from attack2defense.config import (
+    DATASET_NAMES,
     MODEL_SPECS,
     ROBUST_ACCURACY_TARGET,
     STRONG_EPSILON,
@@ -52,6 +53,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
         output_dir = "outputs/clean" if args.mode == "clean" else "outputs/defense"
     config = TrainConfig(
         model=args.model,
+        dataset=args.dataset,
         mode=args.mode,
         epochs=args.epochs,
         batch_size=args.batch_size,
@@ -62,6 +64,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
         epsilon=args.epsilon,
         pgd_steps=args.pgd_steps,
         adv_ratio=args.adv_ratio,
+        sigma=args.sigma,
         val_pgd_steps=args.val_pgd_steps,
         final_pgd_steps=args.final_pgd_steps,
         seed=args.seed,
@@ -162,6 +165,43 @@ def _cmd_benchmark(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_certify(args: argparse.Namespace) -> None:
+    from attack2defense.smoothing import run_certify
+
+    output_dir = args.output_dir or str(Path(args.checkpoint).parent / "certify")
+    run_certify(
+        args.checkpoint,
+        output_dir,
+        sigma=args.sigma,
+        n0=args.n0,
+        n=args.n,
+        alpha=args.alpha,
+        batch_size=args.batch_size,
+        max_per_class=args.max_per_class,
+        data_dir=args.data_dir,
+        seed=args.seed,
+        num_workers=args.num_workers,
+    )
+
+
+def _cmd_benchmark_attacks(args: argparse.Namespace) -> None:
+    from attack2defense.extra_attacks import run_extra_attacks
+
+    output_dir = args.output_dir or str(Path(args.checkpoint).parent / "extra_attacks")
+    run_extra_attacks(
+        args.checkpoint,
+        output_dir,
+        attacks=args.attacks,
+        epsilon=args.epsilon,
+        cw_steps=args.cw_steps,
+        batch_size=args.batch_size,
+        max_images=args.max_images,
+        data_dir=args.data_dir,
+        seed=args.seed,
+        num_workers=args.num_workers,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="attack2defense",
@@ -181,13 +221,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_shared(train)
     train.add_argument("--model", choices=sorted(MODEL_SPECS), default="small_cnn")
+    train.add_argument("--dataset", choices=DATASET_NAMES, default="cifar10")
     train.add_argument(
         "--mode",
         choices=TRAINING_MODES,
         default="fgsm",
         help=(
             "clean = ordinary training, fgsm = fast adversarial training, "
-            "pgd = multi-step adversarial training."
+            "pgd = multi-step adversarial training, gaussian = noise training "
+            "for randomized smoothing."
         ),
     )
     train.add_argument("--epochs", type=int, default=20)
@@ -208,6 +250,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="Share of each batch replaced by adversarial images (0 to 1).",
+    )
+    train.add_argument(
+        "--sigma",
+        type=float,
+        default=0.25,
+        help="Gaussian noise scale for --mode gaussian.",
     )
     train.add_argument("--val-pgd-steps", type=int, default=3)
     train.add_argument("--final-pgd-steps", type=int, default=10)
@@ -277,6 +325,35 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--pgd-steps", type=int, default=10)
     benchmark.add_argument("--output-dir", default="outputs/zeroshot")
     benchmark.set_defaults(func=_cmd_benchmark)
+
+    certify = subparsers.add_parser(
+        "certify",
+        help="Certified accuracy vs L2 radius via randomized smoothing.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_shared(certify)
+    certify.add_argument("--checkpoint", required=True)
+    certify.add_argument("--output-dir", default=None)
+    certify.add_argument("--sigma", type=float, default=0.25)
+    certify.add_argument("--n0", type=int, default=100, help="Samples used to pick the class.")
+    certify.add_argument("--n", type=int, default=1000, help="Samples used to bound p_A.")
+    certify.add_argument("--alpha", type=float, default=0.001)
+    certify.add_argument("--max-per-class", type=int, default=20)
+    certify.set_defaults(func=_cmd_certify)
+
+    extra = subparsers.add_parser(
+        "benchmark-attacks",
+        help="Optional CW and AutoAttack evaluation via torchattacks.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_shared(extra)
+    extra.add_argument("--checkpoint", required=True)
+    extra.add_argument("--output-dir", default=None)
+    extra.add_argument("--attacks", nargs="+", choices=("cw", "autoattack"), default=["cw"])
+    extra.add_argument("--epsilon", type=parse_epsilon, default=None)
+    extra.add_argument("--cw-steps", type=int, default=20)
+    extra.add_argument("--max-images", type=int, default=100)
+    extra.set_defaults(func=_cmd_benchmark_attacks)
     return parser
 
 

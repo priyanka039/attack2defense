@@ -17,6 +17,22 @@ CIFAR10_CLASSES: tuple[str, ...] = (
     "truck",
 )
 
+# Ten ImageNet classes used by Imagenette (https://github.com/fastai/imagenette).
+IMAGENETTE_CLASSES: tuple[str, ...] = (
+    "tench",
+    "English springer",
+    "cassette player",
+    "chain saw",
+    "church",
+    "French horn",
+    "garbage truck",
+    "gas pump",
+    "golf ball",
+    "parachute",
+)
+
+DATASET_NAMES = ("cifar10", "imagenette")
+
 # Statistics used by the usual CIFAR-10 training recipe.
 CIFAR_MEAN: tuple[float, float, float] = (0.4914, 0.4822, 0.4465)
 CIFAR_STD: tuple[float, float, float] = (0.2470, 0.2435, 0.2616)

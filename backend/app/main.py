@@ -13,7 +13,7 @@ from attack2defense.utils import device_label, set_progress_enabled
 from backend.app.db import Database
 from backend.app.deps import Services
 from backend.app.errors import install_error_handlers
-from backend.app.routers import attacks, auth, datasets, evaluations, models, public, training
+from backend.app.routers import attacks, auth, certify, datasets, evaluations, models, public, training
 from backend.app.services.datasets import DatasetService
 from backend.app.services.jobs import JobRunner
 from backend.app.services.model_store import ModelStore
@@ -68,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"status": "ok", "version": __version__, "device": device_label(services.models.device)}
 
-    for router in (auth, datasets, models, attacks, training, evaluations, public):
+    for router in (auth, datasets, models, attacks, training, evaluations, certify, public):
         api.include_router(router.router)
     app.include_router(api)
     return app

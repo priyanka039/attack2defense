@@ -8,7 +8,7 @@ from attack2defense.config import CIFAR10_CLASSES
 from attack2defense.evaluate import evaluate_loader, evaluate_sweep, write_evaluation_files
 from attack2defense.registry import MODE_LABELS
 from attack2defense.train import TrainConfig, TrainingCancelled, TrainingHooks, run_training
-from backend.app.schemas import EvaluationRequest, TrainingRequest
+from backend.app.schemas import CertifyRequest, EvaluationRequest, TrainingRequest
 from backend.app.services.jobs import JobContext
 
 _EVAL_BATCH = 100
@@ -31,6 +31,7 @@ def run_training_job(services, user_id: int, job_id: str, request: TrainingReque
         epsilon=request.epsilon,
         pgd_steps=request.pgd_steps,
         adv_ratio=request.adv_ratio,
+        sigma=request.sigma,
         val_pgd_steps=3,
         val_per_class=request.val_per_class,
         max_train_batches=request.max_train_batches,
@@ -125,3 +126,34 @@ def run_evaluation_job(services, user_id: int, request: EvaluationRequest, ctx: 
         "models": results,
         "flags": flags,
     }
+
+
+def run_certify_job(services, user_id: int, request: CertifyRequest, ctx: JobContext) -> dict:
+    from attack2defense.smoothing import certify_loader
+
+    entry = services.models.get(request.model_id, user_id)
+    model = services.models.load(entry)
+    loader = services.datasets.balanced_loader(request.dataset, request.images_per_class, batch_size=1)
+
+    def report(done: int, total: int | None) -> None:
+        size = total or max(done, 1)
+        ctx.progress(done / size, f"Certified {done} of {size} images", force=True)
+
+    ctx.progress(0.0, f"Certifying {entry.id}", force=True)
+    result = certify_loader(
+        model,
+        loader,
+        sigma=request.sigma,
+        n0=request.n0,
+        n=request.n,
+        alpha=request.alpha,
+        batch_size=32,
+        on_progress=report,
+    )
+    result.pop("rows", None)
+    result["model_id"] = entry.id
+    result["label"] = entry.to_dict()["label"]
+    result["dataset"] = request.dataset
+    result["kind"] = "certified"
+    result["note"] = "Certified accuracy is a provable L2 radius, not empirical accuracy after FGSM or PGD."
+    return result

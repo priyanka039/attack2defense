@@ -18,11 +18,12 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
 from attack2defense.attacks import craft_adversarial_examples
 from attack2defense.config import (
     CIFAR10_CLASSES,
+    IMAGENETTE_CLASSES,
     MODEL_SPECS,
     ROBUST_ACCURACY_TARGET,
     TARGET_EPSILON,
 )
-from attack2defense.data import load_cifar10
+from attack2defense.data import default_image_size, load_dataset
 from attack2defense.evaluate import evaluate_loader, run_evaluation
 from attack2defense.models import (
     CONV_MODELS,
@@ -32,6 +33,7 @@ from attack2defense.models import (
     use_channels_last,
 )
 from attack2defense.plotting import plot_history
+from attack2defense.smoothing import add_gaussian_noise
 from attack2defense.utils import (
     device_label,
     get_device,
@@ -41,7 +43,7 @@ from attack2defense.utils import (
     set_seed,
 )
 
-TRAINING_MODES = ("clean", "fgsm", "pgd")
+TRAINING_MODES = ("clean", "fgsm", "pgd", "gaussian")
 OPTIMIZERS = ("adamw", "sgd")
 SCHEDULERS = ("cosine", "onecycle")
 
@@ -62,6 +64,7 @@ class TrainingHooks:
 @dataclass
 class TrainConfig:
     model: str = "small_cnn"
+    dataset: str = "cifar10"
     mode: str = "fgsm"
     epochs: int = 20
     batch_size: int = 128
@@ -72,6 +75,7 @@ class TrainConfig:
     epsilon: float = TARGET_EPSILON
     pgd_steps: int = 5
     adv_ratio: float = 1.0
+    sigma: float = 0.25
     val_pgd_steps: int = 3
     final_pgd_steps: int = 10
     seed: int = 42
@@ -86,11 +90,15 @@ class TrainConfig:
     amp: bool = True
 
 
-def attack_tag(mode: str, epsilon: float, pgd_steps: int = 5, adv_ratio: float = 1.0) -> str:
+def attack_tag(
+    mode: str, epsilon: float, pgd_steps: int = 5, adv_ratio: float = 1.0, sigma: float = 0.25
+) -> str:
     """Short label for the attack a model was trained on, e.g. ``pgd5_eps2_ratio1``."""
 
     if mode == "clean":
         return "clean"
+    if mode == "gaussian":
+        return f"gaussian_sigma{sigma:g}"
     attack = "fgsm_rs" if mode == "fgsm" else f"pgd{pgd_steps}"
     return f"{attack}_eps{round(epsilon * 255, 2):g}_ratio{adv_ratio:g}"
 
@@ -100,12 +108,13 @@ def build_run_config(config: TrainConfig) -> dict:
     payload = asdict(config)
     payload.update(
         {
-            "tag": attack_tag(config.mode, config.epsilon, config.pgd_steps, config.adv_ratio),
-            "image_size": spec.image_size,
+            "tag": attack_tag(config.mode, config.epsilon, config.pgd_steps, config.adv_ratio, config.sigma),
+            "dataset": config.dataset,
+            "image_size": default_image_size(config.dataset, spec.image_size),
             "mean": list(spec.mean),
             "std": list(spec.std),
-            "num_classes": len(CIFAR10_CLASSES),
-            "class_names": list(CIFAR10_CLASSES),
+            "num_classes": len(CIFAR10_CLASSES if config.dataset == "cifar10" else IMAGENETTE_CLASSES),
+            "class_names": list(CIFAR10_CLASSES if config.dataset == "cifar10" else IMAGENETTE_CLASSES),
             "pretrained": spec.pretrained,
             "description": spec.description,
             "robust_accuracy_target": ROBUST_ACCURACY_TARGET,
@@ -118,6 +127,8 @@ def _validate(config: TrainConfig) -> None:
     if config.model not in MODEL_SPECS:
         known = ", ".join(sorted(MODEL_SPECS))
         raise ValueError(f"Unknown model '{config.model}'. Choose from: {known}")
+    if config.dataset not in ("cifar10", "imagenette"):
+        raise ValueError("dataset must be cifar10 or imagenette")
     if config.mode not in TRAINING_MODES:
         raise ValueError(f"mode must be one of {TRAINING_MODES}")
     if config.optimizer_name not in OPTIMIZERS:
@@ -132,6 +143,8 @@ def _validate(config: TrainConfig) -> None:
         raise ValueError("pgd mode needs pgd_steps >= 1")
     if not 0 <= config.adv_ratio <= 1:
         raise ValueError("adv_ratio must be between 0 and 1")
+    if config.mode == "gaussian" and config.sigma <= 0:
+        raise ValueError("gaussian mode needs sigma > 0")
     if config.val_per_class < 1:
         raise ValueError("val_per_class must be at least 1")
 
@@ -180,6 +193,8 @@ def _training_inputs(
     attacked and the rest stays clean.
     """
 
+    if config.mode == "gaussian":
+        return add_gaussian_noise(images, config.sigma)
     if config.mode == "clean" or config.epsilon == 0:
         return images
     count = round(config.adv_ratio * images.shape[0])
@@ -276,6 +291,11 @@ def _describe_run(log, config: TrainConfig, device: torch.device, use_amp: bool)
         )
     elif config.mode == "pgd":
         log(f"Defense: PGD adversarial training with {config.pgd_steps} steps per batch.")
+    elif config.mode == "gaussian":
+        log(
+            f"Defense: Gaussian noise training (sigma={config.sigma:g}) for randomized smoothing. "
+            "This is the certified-defense track, not empirical adversarial training."
+        )
     else:
         log("Standard training on clean images. Validation still measures FGSM and PGD.")
     if config.mode != "clean" and config.adv_ratio < 1:
@@ -308,18 +328,20 @@ def run_training(config: TrainConfig, hooks: TrainingHooks | None = None) -> dic
     (output_dir / "config.json").write_text(json.dumps(run_config, indent=2), encoding="utf-8")
     _describe_run(log, config, device, use_amp)
 
-    log("Loading CIFAR-10. The first run downloads the dataset into the data folder.")
+    log(f"Loading {config.dataset}. The first run downloads the dataset into the data folder.")
     spec = MODEL_SPECS[config.model]
-    data = load_cifar10(
+    image_size = default_image_size(config.dataset, spec.image_size)
+    data = load_dataset(
+        config.dataset,
         data_dir=config.data_dir,
-        image_size=spec.image_size,
+        image_size=image_size,
         batch_size=config.batch_size,
         num_workers=config.num_workers,
         seed=config.seed,
         val_per_class=config.val_per_class,
         device=device,
     )
-    model = build_pixel_model(config.model, num_classes=len(CIFAR10_CLASSES), pretrained=None)
+    model = build_pixel_model(config.model, num_classes=len(data.class_names), pretrained=None)
     model.to(device)
     if config.model in CONV_MODELS:
         use_channels_last(model)

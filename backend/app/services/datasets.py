@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
-from attack2defense.config import CIFAR10_CLASSES
+from attack2defense.config import CIFAR10_CLASSES, IMAGENETTE_CLASSES
 from attack2defense.data import sample_indices_per_class
 from backend.app.errors import ApiError
 from backend.app.settings import Settings
@@ -21,6 +21,14 @@ DATASETS = {
         "image_size": 32,
         "splits": {"train": 49000, "validation": 1000, "test": 10000},
         "description": "60,000 32x32 colour images in 10 classes. The official test split is held out.",
+    },
+    "imagenette": {
+        "name": "imagenette",
+        "title": "Imagenette",
+        "classes": list(IMAGENETTE_CLASSES),
+        "image_size": 128,
+        "splits": {"train": 8469, "validation": 1000, "test": 3925},
+        "description": "Ten ImageNet classes at 160px, resized to 128px.",
     },
 }
 
@@ -51,6 +59,14 @@ class DatasetService:
 
     def _load(self, name: str) -> Dataset:
         try:
+            if name == "imagenette":
+                return datasets.Imagenette(
+                    root=str(self.settings.data_dir),
+                    split="val",
+                    size="160px",
+                    download=self.settings.download_data,
+                    transform=transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]),
+                )
             return datasets.CIFAR10(
                 root=str(self.settings.data_dir),
                 train=False,
@@ -61,7 +77,7 @@ class DatasetService:
             raise ApiError(
                 503,
                 "dataset_unavailable",
-                "CIFAR-10 is not downloaded. Run any training command once, or set A2D_DOWNLOAD_DATA=true.",
+                f"{name} is not downloaded. Run a training command once, or set A2D_DOWNLOAD_DATA=true.",
             ) from exc
 
     def class_index(self, name: str, label: str) -> int:

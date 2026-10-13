@@ -219,7 +219,7 @@ def write_evaluation_files(
 
     title = f"{model_name} ({mode})  |  epsilon {result['epsilon']:.5f}  |  PGD steps {result['pgd_steps']}"
     plot_overall(summary_frame, output_dir / "overall.png", title)
-    plot_per_class(per_class_frame, output_dir / "per_class.png", f"All CIFAR-10 classes  |  {title}")
+    plot_per_class(per_class_frame, output_dir / "per_class.png", f"Per class  |  {title}")
 
     if save_examples_from is not None:
         model, dataset, device = save_examples_from
@@ -361,6 +361,7 @@ def run_evaluation(
         device=device,
         max_per_class=max_per_class,
         seed=seed,
+        dataset=str(config.get("dataset", "cifar10")),
     )
     result = evaluate_loader(
         model,

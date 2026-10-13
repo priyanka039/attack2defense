@@ -24,4 +24,12 @@ def public_results(services: Services = Depends(get_services)) -> dict:
     """The reported experiment results. No login needed."""
 
     models = [entry.to_dict() for entry in services.models.public_entries().values() if entry.summary]
-    return {"models": models, "zeroshot": _zeroshot(services.settings.results_roots)}
+    certified = []
+    for root in services.settings.results_roots:
+        if not root.exists():
+            continue
+        for path in sorted(Path(root).rglob("certify.csv")):
+            certified.append(
+                {"source": path.parent.parent.name, "curve": pd.read_csv(path).to_dict(orient="records")}
+            )
+    return {"models": models, "zeroshot": _zeroshot(services.settings.results_roots), "certified": certified}

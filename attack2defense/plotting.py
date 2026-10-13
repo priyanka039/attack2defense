@@ -243,3 +243,27 @@ def plot_epsilon_sweep(frame: pd.DataFrame, path: Path, title: str) -> None:
     figure.tight_layout()
     figure.savefig(path, dpi=150)
     plt.close(figure)
+
+
+def plot_certified_accuracy(frame: pd.DataFrame, path: Path, title: str) -> None:
+    """Certified accuracy against L2 radius. Separate from empirical robust accuracy."""
+
+    _style()
+    figure, axis = plt.subplots(figsize=(8, 5))
+    axis.plot(
+        frame["radius"].astype(float),
+        _percent(frame["certified_accuracy"]),
+        marker="o",
+        color=CLEAN_COLOR,
+        label="Certified accuracy",
+    )
+    axis.set_xlabel("L2 radius")
+    axis.set_ylabel("Certified accuracy (%)")
+    axis.set_title(title)
+    axis.set_ylim(0, 105)
+    axis.grid(True, alpha=0.3)
+    axis.legend()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.tight_layout()
+    figure.savefig(path, dpi=150)
+    plt.close(figure)

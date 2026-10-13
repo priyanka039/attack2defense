@@ -50,6 +50,7 @@ class ModelEntry:
             float(self.config.get("epsilon", 0.0)),
             int(self.config.get("pgd_steps", 5)),
             float(self.config.get("adv_ratio", 1.0)),
+            float(self.config.get("sigma", 0.25)),
         )
 
     @property

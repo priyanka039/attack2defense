@@ -10,13 +10,26 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
-from attack2defense.config import CIFAR10_CLASSES
+from attack2defense.config import CIFAR10_CLASSES, DATASET_NAMES, IMAGENETTE_CLASSES
 
 
-def make_transforms(image_size: int, train: bool) -> transforms.Compose:
+def make_transforms(image_size: int, train: bool, dataset: str = "cifar10") -> transforms.Compose:
     """Augment the training split. Evaluation images are only resized."""
 
     operations: list = []
+    if dataset == "imagenette":
+        if train:
+            operations.extend(
+                [
+                    transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
+                    transforms.RandomHorizontalFlip(),
+                ]
+            )
+        else:
+            operations.append(transforms.Resize((image_size, image_size)))
+        operations.append(transforms.ToTensor())
+        return transforms.Compose(operations)
+
     if train:
         operations.extend(
             [
@@ -111,6 +124,23 @@ class CIFARData:
     test_loader: DataLoader
     test_dataset: Dataset
     class_names: tuple[str, ...]
+    dataset_name: str = "cifar10"
+
+
+def dataset_classes(name: str) -> tuple[str, ...]:
+    if name == "cifar10":
+        return CIFAR10_CLASSES
+    if name == "imagenette":
+        return IMAGENETTE_CLASSES
+    raise ValueError(f"Unknown dataset '{name}'. Choose from: {', '.join(DATASET_NAMES)}")
+
+
+def default_image_size(dataset: str, model_image_size: int) -> int:
+    """Imagenette is trained at 128px; CIFAR models keep their native size."""
+
+    if dataset == "imagenette" and model_image_size <= 32:
+        return 128
+    return model_image_size
 
 
 def load_cifar10(
@@ -128,8 +158,8 @@ def load_cifar10(
     off. The official test split is reserved for the final report.
     """
 
-    train_transform = make_transforms(image_size, train=True)
-    eval_transform = make_transforms(image_size, train=False)
+    train_transform = make_transforms(image_size, train=True, dataset="cifar10")
+    eval_transform = make_transforms(image_size, train=False, dataset="cifar10")
 
     training_source = datasets.CIFAR10(
         root=data_dir,
@@ -184,6 +214,92 @@ def load_cifar10(
         test_loader=test_loader,
         test_dataset=test_dataset,
         class_names=CIFAR10_CLASSES,
+        dataset_name="cifar10",
+    )
+
+
+def _imagenette(data_dir: str, split: str, transform) -> Dataset:
+    return datasets.Imagenette(
+        root=data_dir,
+        split=split,
+        size="160px",
+        download=True,
+        transform=transform,
+    )
+
+
+def load_imagenette(
+    data_dir: str,
+    image_size: int,
+    batch_size: int,
+    num_workers: int,
+    seed: int,
+    val_per_class: int,
+    device: torch.device,
+) -> CIFARData:
+    """Imagenette: 10 ImageNet classes, 160px source images resized to ``image_size``.
+
+    The official validation split is the held-out test set. A seeded slice of
+    the training split is used for validation, matching the CIFAR-10 protocol.
+    """
+
+    train_transform = make_transforms(image_size, train=True, dataset="imagenette")
+    eval_transform = make_transforms(image_size, train=False, dataset="imagenette")
+    training_source = _imagenette(data_dir, "train", train_transform)
+    validation_source = _imagenette(data_dir, "train", eval_transform)
+    test_dataset = _imagenette(data_dir, "val", eval_transform)
+    train_indices, val_indices = stratified_indices(
+        training_source.targets, val_per_class=val_per_class, seed=seed
+    )
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    shared = _loader_kwargs(num_workers, device)
+    train_loader = DataLoader(
+        Subset(training_source, train_indices),
+        batch_size=batch_size,
+        shuffle=True,
+        generator=generator,
+        **shared,
+    )
+    val_loader = DataLoader(
+        Subset(validation_source, val_indices),
+        batch_size=batch_size,
+        shuffle=False,
+        **shared,
+    )
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, **shared)
+    return CIFARData(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        test_loader=test_loader,
+        test_dataset=test_dataset,
+        class_names=IMAGENETTE_CLASSES,
+        dataset_name="imagenette",
+    )
+
+
+def load_dataset(
+    name: str,
+    data_dir: str,
+    image_size: int,
+    batch_size: int,
+    num_workers: int,
+    seed: int,
+    val_per_class: int,
+    device: torch.device,
+) -> CIFARData:
+    """Dispatch to CIFAR-10 or Imagenette with the same seeded split protocol."""
+
+    dataset_classes(name)
+    loader = load_cifar10 if name == "cifar10" else load_imagenette
+    return loader(
+        data_dir=data_dir,
+        image_size=image_size,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        seed=seed,
+        val_per_class=val_per_class,
+        device=device,
     )
 
 
@@ -195,24 +311,25 @@ def make_test_loader(
     device: torch.device,
     max_per_class: int | None = None,
     seed: int = 42,
+    dataset: str = "cifar10",
 ) -> tuple[DataLoader, Dataset]:
-    """Official CIFAR-10 test loader, optionally capped per class."""
+    """Held-out test loader, optionally capped per class."""
 
-    dataset = datasets.CIFAR10(
-        root=data_dir,
-        train=False,
-        download=True,
-        transform=make_transforms(image_size, train=False),
-    )
-    if max_per_class is not None:
-        indices = sample_indices_per_class(dataset.targets, max_per_class, seed)
-        dataset_for_loader: Dataset = Subset(dataset, indices)
+    dataset_classes(dataset)
+    transform = make_transforms(image_size, train=False, dataset=dataset)
+    if dataset == "imagenette":
+        test_set = _imagenette(data_dir, "val", transform)
     else:
-        dataset_for_loader = dataset
+        test_set = datasets.CIFAR10(root=data_dir, train=False, download=True, transform=transform)
+    if max_per_class is not None:
+        indices = sample_indices_per_class(test_set.targets, max_per_class, seed)
+        dataset_for_loader: Dataset = Subset(test_set, indices)
+    else:
+        dataset_for_loader = test_set
     loader = DataLoader(
         dataset_for_loader,
         batch_size=batch_size,
         shuffle=False,
         **_loader_kwargs(num_workers, device),
     )
-    return loader, dataset
+    return loader, test_set
