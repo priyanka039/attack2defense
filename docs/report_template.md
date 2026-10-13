@@ -129,14 +129,18 @@ What made the difference:
 2. **Training on attacks.** Adversarial training is the only change between the undefended and defended rows of the tables above.
 3. **Matching the model to the data.** Training a 32x32 ResNet-18 instead of upscaling to 224x224 made adversarial training affordable.
 
-## 7. Limitations and next steps
+## 7. Workbench
+
+The same pipeline is available as a FastAPI + React app: log in, pick a test image, run FGSM or PGD with live sliders, start a short training job, and export an evaluation sweep. Certified accuracy lives on its own screen so it is not mixed with empirical robust accuracy. Setup is in the README.
+
+## 8. Limitations and next steps
 
 - **Budget-specific robustness.** The defense targets 2/255. To claim robustness at 8/255, train at 8/255 and expect lower clean accuracy.
-- **First-order attacks only.** FGSM and PGD are gradient attacks. A stronger audit would add AutoAttack (APGD-CE, APGD-T, FAB, Square), which also catches gradient masking.
+- **Adaptive attacks.** AutoAttack and CW are optional extra checks. They do not cover every adaptive attack that could be aimed at this defense.
 - **Clean accuracy cost.** Robust models give up some clean accuracy. TRADES or adding extra (pseudo-labelled) training data are the usual ways to close that gap.
 - **Bigger models.** Wide ResNets (WRN-34-10) and longer schedules improve both clean and robust accuracy, at a higher compute cost.
 
-## 8. How to reproduce
+## 9. How to reproduce
 
 ```bash
 python scripts/package_for_colab.py               # builds attack2defense_project.zip
@@ -145,6 +149,12 @@ python scripts/build_report.py --results results.zip
 ```
 
 All raw numbers are in `docs/results_tables.md`, and per-run CSV and JSON files are in each run's `test_eval/` folder.
+
+${certified_section}
+
+${imagenette_section}
+
+${extra_attacks_section}
 
 ## References
 
@@ -155,3 +165,4 @@ All raw numbers are in `docs/results_tables.md`, and per-run CSV and JSON files 
 5. F. Croce, M. Hein. *Reliable Evaluation of Adversarial Robustness with an Ensemble of Diverse Parameter-free Attacks (AutoAttack).* ICML 2020.
 6. K. He, X. Zhang, S. Ren, J. Sun. *Deep Residual Learning for Image Recognition.* CVPR 2016.
 7. A. Dosovitskiy et al. *An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale.* ICLR 2021.
+8. J. Cohen, E. Rosenfeld, J. Z. Kolter. *Certified Adversarial Robustness via Randomized Smoothing.* ICML 2019.

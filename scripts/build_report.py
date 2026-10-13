@@ -45,8 +45,9 @@ MODE_NAMES = {
     "clean": "no defense",
     "fgsm": "FGSM adversarial training",
     "pgd": "PGD adversarial training",
+    "gaussian": "Gaussian noise training",
 }
-MODE_ORDER = {"clean": 0, "fgsm": 1, "pgd": 2}
+MODE_ORDER = {"clean": 0, "fgsm": 1, "pgd": 2, "gaussian": 3}
 TARGET_PERCENT = ROBUST_ACCURACY_TARGET * 100
 
 
@@ -208,11 +209,12 @@ def build_figures(runs: list[Run], results: Path, figures: Path) -> dict[str, st
         shutil.rmtree(figures)
     figures.mkdir(parents=True)
     names: dict[str, str] = {}
+    main_runs = empirical_cifar_runs(runs)
 
-    figure_overall(runs, figures / "overall_accuracy.png")
-    figure_epsilon(runs, figures / "accuracy_vs_epsilon.png")
-    figure_per_class(runs, figures / "per_class_pgd.png")
-    if figure_training(runs, figures / "training_curves.png"):
+    figure_overall(main_runs, figures / "overall_accuracy.png")
+    figure_epsilon(main_runs, figures / "accuracy_vs_epsilon.png")
+    figure_per_class(main_runs, figures / "per_class_pgd.png")
+    if figure_training(main_runs, figures / "training_curves.png"):
         names["training"] = "training_curves.png"
 
     for run in runs:
@@ -227,6 +229,11 @@ def build_figures(runs: list[Run], results: Path, figures: Path) -> dict[str, st
     if zeroshot.exists():
         shutil.copy(zeroshot, figures / "zeroshot_comparison.png")
         names["zeroshot"] = "zeroshot_comparison.png"
+
+    certified = next(results.rglob("certified_accuracy.png"), None)
+    if certified is not None:
+        shutil.copy(certified, figures / "certified_accuracy.png")
+        names["certified"] = "certified_accuracy.png"
     return names
 
 
@@ -341,6 +348,62 @@ def table_zeroshot(results: Path) -> str:
         for _, row in frame.iterrows()
     ]
     return _markdown(pd.DataFrame(rows))
+
+
+def _dataset(run: Run) -> str:
+    return str(run.config.get("dataset", "cifar10"))
+
+
+def empirical_cifar_runs(runs: list[Run]) -> list[Run]:
+    """Main report tables: CIFAR-10 empirical attacks, not Gaussian or Imagenette."""
+
+    selected = [run for run in runs if _dataset(run) == "cifar10" and run.mode != "gaussian"]
+    return selected or runs
+
+
+def table_certified(results: Path) -> str:
+    paths = sorted(results.rglob("certify.csv"))
+    if not paths:
+        return ""
+    frames = []
+    for path in paths:
+        frame = pd.read_csv(path)
+        frame.insert(0, "Run", path.parent.parent.name)
+        renamed = {"radius": "L2 radius", "certified_accuracy": "Certified accuracy"}
+        frames.append(frame.rename(columns=renamed))
+    combined = pd.concat(frames, ignore_index=True)
+    combined["Certified accuracy"] = combined["Certified accuracy"].map(_pct)
+    keep = [
+        column
+        for column in ("Run", "L2 radius", "Certified accuracy", "images")
+        if column in combined.columns
+    ]
+    return _markdown(combined[keep])
+
+
+def table_extra_attacks(results: Path) -> str:
+    paths = sorted(results.rglob("extra_attacks.csv"))
+    if not paths:
+        return ""
+    frames = [pd.read_csv(path) for path in paths]
+    combined = pd.concat(frames, ignore_index=True)
+    if "accuracy" in combined.columns:
+        combined["accuracy"] = combined["accuracy"].map(_pct)
+    return _markdown(combined)
+
+
+def table_imagenette(runs: list[Run]) -> str:
+    imagenette = [run for run in runs if _dataset(run) == "imagenette"]
+    return table_headline(imagenette) if imagenette else ""
+
+
+def section_or_skip(title: str, body: str, figure: str = "") -> str:
+    if not body:
+        return ""
+    parts = [f"## {title}", body]
+    if figure:
+        parts.append(figure)
+    return "\n\n".join(parts)
 
 
 # --------------------------------------------------------------------------- narrative
@@ -464,26 +527,41 @@ def write_report(
     output: Path,
     note: str,
 ) -> dict[str, str]:
-    verdict = _verdict(runs)
-    models = sorted({MODEL_NAMES.get(str(run.summary["model"]), str(run.summary["model"])) for run in runs})
+    main_runs = empirical_cifar_runs(runs)
+    imagenette = table_imagenette(runs)
+    certified = table_certified(results)
+    extra = table_extra_attacks(results)
+    verdict = _verdict(main_runs)
+    models = sorted(
+        {MODEL_NAMES.get(str(run.summary["model"]), str(run.summary["model"])) for run in main_runs}
+    )
     values = {
         "note": f"> {note}\n" if note else "",
         "models": ", ".join(models),
-        "run_count": str(len(runs)),
-        "test_images": f"{int(runs[0].summary['images']):,}",
+        "run_count": str(len(main_runs)),
+        "test_images": f"{int(main_runs[0].summary['images']):,}",
         "verdict": verdict["verdict"],
         "comparison": verdict["comparison"],
-        "headline_table": table_headline(runs),
-        "sweep_table": table_sweep(runs),
-        "per_class_table": table_per_class(runs),
-        "examples_table": table_examples(runs),
-        "training_table": table_training(runs),
+        "headline_table": table_headline(main_runs),
+        "sweep_table": table_sweep(main_runs),
+        "per_class_table": table_per_class(main_runs),
+        "examples_table": table_examples(main_runs),
+        "training_table": table_training(main_runs),
         "zeroshot_table": table_zeroshot(results),
-        "examples_section": _example_section(runs, figures),
-        "examples_observation": _examples_observation(runs),
-        "sweep_observation": _sweep_observation(runs),
-        "recipe": _recipe(runs),
-        "split": _split(runs),
+        "examples_section": _example_section(main_runs, figures),
+        "examples_observation": _examples_observation(main_runs),
+        "sweep_observation": _sweep_observation(main_runs),
+        "recipe": _recipe(main_runs),
+        "split": _split(main_runs),
+        "certified_section": section_or_skip(
+            "Certified defense (randomized smoothing)",
+            certified,
+            _image(extra_figures["certified"], "Certified accuracy versus L2 radius")
+            if "certified" in extra_figures
+            else "",
+        ),
+        "imagenette_section": section_or_skip("Imagenette generalization", imagenette),
+        "extra_attacks_section": section_or_skip("CW and AutoAttack", extra),
         "fig_overall": _image("overall_accuracy.png", "Clean, FGSM and PGD accuracy for every model"),
         "fig_epsilon": _image("accuracy_vs_epsilon.png", "Accuracy after PGD against epsilon"),
         "fig_per_class": _image("per_class_pgd.png", "Accuracy after PGD for every class"),
@@ -499,7 +577,8 @@ def write_report(
     output.write_text(template.substitute(values), encoding="utf-8")
 
     tables = "\n\n".join(
-        [
+        part
+        for part in (
             "# Result tables\n\nGenerated by `scripts/build_report.py`.",
             "## Test set, epsilon 2/255\n\n" + values["headline_table"],
             "## Attack strength sweep\n\n" + values["sweep_table"],
@@ -507,7 +586,11 @@ def write_report(
             "## Example images\n\n" + values["examples_table"],
             "## Training\n\n" + values["training_table"],
             "## Zero-shot benchmark\n\n" + values["zeroshot_table"],
-        ]
+            ("## Certified defense\n\n" + certified) if certified else "",
+            ("## Imagenette\n\n" + imagenette) if imagenette else "",
+            ("## Extra attacks\n\n" + extra) if extra else "",
+        )
+        if part
     )
     (figures.parent / "results_tables.md").write_text(tables + "\n", encoding="utf-8")
     return values
