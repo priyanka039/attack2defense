@@ -13,8 +13,27 @@ References:
 
 from __future__ import annotations
 
+import time
+from dataclasses import dataclass, field
+
 import torch
 import torch.nn.functional as F
+
+ATTACK_KINDS = ("fgsm", "pgd")
+
+
+@dataclass
+class AttackResult:
+    """Adversarial images plus the cost and progress of the attack that made them."""
+
+    adversarial: torch.Tensor
+    kind: str
+    epsilon: float
+    alpha: float
+    steps: int
+    random_start: bool
+    seconds: float
+    success_per_step: list[float] = field(default_factory=list)
 
 
 def project(images: torch.Tensor, original: torch.Tensor, epsilon: float) -> torch.Tensor:
@@ -34,12 +53,16 @@ def pgd_attack(
     alpha: float,
     steps: int,
     random_start: bool = True,
+    trace: list[float] | None = None,
 ) -> torch.Tensor:
     """Untargeted PGD. Maximizes cross-entropy of ``labels`` inside the ball.
 
     ``labels`` are the classes the attack tries to leave. For a trained
     CIFAR-10 model those are the true labels. For the ImageNet zero-shot
     benchmark they are the model's current predictions.
+
+    When ``trace`` is a list, the share of images the model gets wrong after
+    each step is appended to it.
     """
 
     original = images.detach()
@@ -53,11 +76,14 @@ def pgd_attack(
         adversarial = original.clone()
 
     with torch.enable_grad():
-        for _ in range(steps):
+        for step in range(steps):
             adversarial = adversarial.detach().requires_grad_(True)
+            logits = model(adversarial)
+            if trace is not None and step > 0:
+                trace.append(_miss_rate(logits, labels))
             # Summing keeps per-pixel gradients large enough to survive float16
             # under mixed precision. Only the sign is used, so the scale is free.
-            loss = F.cross_entropy(model(adversarial), labels, reduction="sum")
+            loss = F.cross_entropy(logits, labels, reduction="sum")
             gradient = torch.autograd.grad(loss, adversarial)[0]
             adversarial = project(
                 adversarial.detach() + alpha * gradient.sign().to(original.dtype),
@@ -65,7 +91,14 @@ def pgd_attack(
                 epsilon,
             )
 
+    if trace is not None:
+        with torch.no_grad():
+            trace.append(_miss_rate(model(adversarial), labels))
     return adversarial.detach()
+
+
+def _miss_rate(logits: torch.Tensor, labels: torch.Tensor) -> float:
+    return float(logits.detach().argmax(dim=1).ne(labels).float().mean().item())
 
 
 def fgsm_attack(
@@ -145,3 +178,57 @@ def craft_adversarial_examples(
             random_start=True,
         )
     raise ValueError(f"Unknown attack kind: {kind}")
+
+
+def run_attack(
+    model: torch.nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    kind: str,
+    epsilon: float,
+    alpha: float | None = None,
+    steps: int = 10,
+    random_start: bool = True,
+) -> AttackResult:
+    """Run FGSM or PGD and record the per-step success rate and the run time.
+
+    FGSM is fixed to one step of size ``epsilon`` from the clean image. For
+    PGD, ``alpha`` defaults to ``2.5 * epsilon / steps``.
+    """
+
+    if kind not in ATTACK_KINDS:
+        raise ValueError(f"kind must be one of {ATTACK_KINDS}, not {kind!r}")
+    if not 0 <= epsilon <= 1:
+        raise ValueError("epsilon must be between 0 and 1")
+    if kind == "fgsm":
+        alpha, steps, random_start = epsilon, 1, False
+    else:
+        if steps < 1:
+            raise ValueError("PGD needs at least one step")
+        if alpha is None:
+            alpha = 2.5 * epsilon / steps
+        if alpha <= 0 and epsilon > 0:
+            raise ValueError("alpha must be positive")
+
+    trace: list[float] = []
+    _synchronize(images.device)
+    started = time.perf_counter()
+    adversarial = pgd_attack(model, images, labels, epsilon, alpha, steps, random_start, trace=trace)
+    _synchronize(images.device)
+    seconds = time.perf_counter() - started
+    return AttackResult(
+        adversarial=adversarial,
+        kind=kind,
+        epsilon=float(epsilon),
+        alpha=float(alpha),
+        steps=int(steps),
+        random_start=bool(random_start),
+        seconds=seconds,
+        success_per_step=trace,
+    )
+
+
+def _synchronize(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)

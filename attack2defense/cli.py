@@ -8,8 +8,13 @@ from pathlib import Path
 import pandas as pd
 
 from attack2defense import __version__
-from attack2defense.config import MODEL_SPECS, STRONG_EPSILON, TARGET_EPSILON
-from attack2defense.evaluate import run_evaluation
+from attack2defense.config import (
+    MODEL_SPECS,
+    ROBUST_ACCURACY_TARGET,
+    STRONG_EPSILON,
+    TARGET_EPSILON,
+)
+from attack2defense.evaluate import export_results, flag_below_threshold, run_evaluation
 from attack2defense.plotting import plot_epsilon_sweep, plot_overall
 from attack2defense.train import OPTIMIZERS, SCHEDULERS, TRAINING_MODES, TrainConfig, run_training
 from attack2defense.utils import set_progress_enabled
@@ -56,6 +61,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
         scheduler_name=args.scheduler,
         epsilon=args.epsilon,
         pgd_steps=args.pgd_steps,
+        adv_ratio=args.adv_ratio,
         val_pgd_steps=args.val_pgd_steps,
         final_pgd_steps=args.final_pgd_steps,
         seed=args.seed,
@@ -85,6 +91,7 @@ def _cmd_evaluate(args: argparse.Namespace) -> None:
         seed=args.seed,
         num_workers=args.num_workers,
         save_examples=not args.no_examples,
+        threshold=args.threshold,
     )
     if not args.sweep:
         return
@@ -106,12 +113,21 @@ def _cmd_evaluate(args: argparse.Namespace) -> None:
             seed=args.seed,
             num_workers=args.num_workers,
             save_examples=False,
+            threshold=args.threshold,
         )
         rows.append(extra["summary"])
 
-    sweep = pd.DataFrame(rows).sort_values("epsilon")
-    sweep_path = output_dir / "sweep.csv"
-    sweep.to_csv(sweep_path, index=False)
+    rows = flag_below_threshold(sorted(rows, key=lambda row: row["epsilon"]), args.threshold)
+    sweep_path = export_results(rows, output_dir / "sweep.csv")
+    export_results(rows, output_dir / "sweep.json")
+    for row in rows:
+        if row["pgd_below_threshold"]:
+            print(
+                f"Below threshold: PGD accuracy {row['pgd_accuracy']:.2%} at epsilon "
+                f"{row['epsilon'] * 255:.0f}/255 is under {args.threshold:.0%}.",
+                flush=True,
+            )
+    sweep = pd.DataFrame(rows)
     plot_epsilon_sweep(
         sweep,
         output_dir / "sweep.png",
@@ -187,6 +203,12 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--no-amp", action="store_true", help="Disable mixed precision on GPU.")
     train.add_argument("--epsilon", type=parse_epsilon, default=TARGET_EPSILON)
     train.add_argument("--pgd-steps", type=int, default=5, help="Steps per batch when --mode pgd.")
+    train.add_argument(
+        "--adv-ratio",
+        type=float,
+        default=1.0,
+        help="Share of each batch replaced by adversarial images (0 to 1).",
+    )
     train.add_argument("--val-pgd-steps", type=int, default=3)
     train.add_argument("--final-pgd-steps", type=int, default=10)
     train.add_argument("--val-per-class", type=int, default=100)
@@ -212,6 +234,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Defaults to the epsilon stored in the checkpoint.",
     )
     evaluate.add_argument("--pgd-steps", type=int, default=10)
+    evaluate.add_argument(
+        "--threshold",
+        type=float,
+        default=ROBUST_ACCURACY_TARGET,
+        help="Minimum acceptable robust accuracy. Lower results are flagged.",
+    )
     evaluate.add_argument(
         "--max-per-class",
         type=int,

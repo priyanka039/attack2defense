@@ -191,11 +191,12 @@ def write_evaluation_files(
     mode: str,
     class_names: list[str],
     save_examples_from: tuple | None = None,
+    threshold: float = ROBUST_ACCURACY_TARGET,
 ) -> dict:
     """Write CSV, JSON, and plots for one evaluation."""
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    target_met = bool(result["pgd_accuracy"] >= ROBUST_ACCURACY_TARGET)
+    target_met = bool(result["pgd_accuracy"] >= threshold)
     summary = {
         "model": model_name,
         "mode": mode,
@@ -205,7 +206,7 @@ def write_evaluation_files(
         "clean_accuracy": result["clean_accuracy"],
         "fgsm_accuracy": result["fgsm_accuracy"],
         "pgd_accuracy": result["pgd_accuracy"],
-        "target": ROBUST_ACCURACY_TARGET,
+        "target": threshold,
         "target_met": target_met,
     }
     summary_frame = pd.DataFrame([summary])
@@ -234,9 +235,75 @@ def write_evaluation_files(
     return summary
 
 
+def flag_below_threshold(rows: list[dict], threshold: float) -> list[dict]:
+    """Mark every row whose FGSM or PGD accuracy is under ``threshold``."""
+
+    flagged = []
+    for row in rows:
+        marked = dict(row)
+        marked["threshold"] = threshold
+        marked["fgsm_below_threshold"] = bool(row["fgsm_accuracy"] < threshold)
+        marked["pgd_below_threshold"] = bool(row["pgd_accuracy"] < threshold)
+        flagged.append(marked)
+    return flagged
+
+
+def evaluate_sweep(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    epsilons: list[float],
+    pgd_steps: int,
+    device: torch.device,
+    *,
+    threshold: float = ROBUST_ACCURACY_TARGET,
+    class_names: tuple[str, ...] | list[str] = CIFAR10_CLASSES,
+    max_batches: int | None = None,
+    on_progress=None,
+) -> list[dict]:
+    """Clean, FGSM, and PGD accuracy at each epsilon on the same images.
+
+    ``on_progress(done, total)`` is called after each epsilon.
+    """
+
+    if not epsilons:
+        raise ValueError("Give at least one epsilon.")
+    rows = []
+    for index, epsilon in enumerate(sorted(epsilons)):
+        result = evaluate_loader(
+            model,
+            loader,
+            epsilon=epsilon,
+            pgd_steps=pgd_steps,
+            device=device,
+            class_names=class_names,
+            max_batches=max_batches,
+            desc=f"eps {epsilon * 255:.1f}/255",
+        )
+        rows.append(result)
+        if on_progress is not None:
+            on_progress(index + 1, len(epsilons))
+    return flag_below_threshold(rows, threshold)
+
+
+def export_results(rows: list[dict], path: str | Path) -> Path:
+    """Write evaluation rows to ``.csv`` (per-class detail dropped) or ``.json``."""
+
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.suffix == ".json":
+        output.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    elif output.suffix == ".csv":
+        flat = [{key: value for key, value in row.items() if key != "per_class"} for row in rows]
+        pd.DataFrame(flat).to_csv(output, index=False)
+    else:
+        raise ValueError("Export path must end in .csv or .json")
+    return output
+
+
 def format_report(summary: dict, per_class: list[dict]) -> str:
     """Plain-text table for the terminal and the training log."""
 
+    threshold = float(summary.get("target", ROBUST_ACCURACY_TARGET))
     lines = [
         (
             f"Images {summary['images']}  |  epsilon {summary['epsilon']:.5f} "
@@ -245,10 +312,10 @@ def format_report(summary: dict, per_class: list[dict]) -> str:
         f"Clean {summary['clean_accuracy']:.2%}   FGSM {summary['fgsm_accuracy']:.2%}   "
         f"PGD {summary['pgd_accuracy']:.2%}",
     ]
-    if summary["pgd_accuracy"] >= ROBUST_ACCURACY_TARGET:
-        lines.append(f"Target met: PGD accuracy is above {ROBUST_ACCURACY_TARGET:.0%}.")
+    if summary["pgd_accuracy"] >= threshold:
+        lines.append(f"Target met: PGD accuracy is at least {threshold:.0%}.")
     else:
-        lines.append(f"Target not met: PGD accuracy is below {ROBUST_ACCURACY_TARGET:.0%}.")
+        lines.append(f"Target not met: PGD accuracy is below {threshold:.0%}.")
     frame = pd.DataFrame(per_class)
     percent = frame.copy()
     for column in ("clean_accuracy", "fgsm_accuracy", "pgd_accuracy"):
@@ -270,6 +337,7 @@ def run_evaluation(
     num_workers: int = 0,
     save_examples: bool = True,
     max_batches: int | None = None,
+    threshold: float = ROBUST_ACCURACY_TARGET,
 ) -> dict:
     """Evaluate a saved model on the CIFAR-10 test set and write the report."""
 
@@ -312,6 +380,7 @@ def run_evaluation(
         mode=config["mode"],
         class_names=class_names,
         save_examples_from=(model, full_dataset, device) if save_examples else None,
+        threshold=threshold,
     )
     print(format_report(summary, result["per_class"]), flush=True)
     print(f"Wrote {output_path}", flush=True)

@@ -18,13 +18,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.5"]
+dev = ["ruff>=0.5", "pytest>=8.0", "torchattacks>=3.5"]
 
 [project.scripts]
 attack2defense = "attack2defense.cli:main"
 
 [tool.setuptools]
 packages = ["attack2defense"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
 
 [tool.ruff]
 line-length = 110

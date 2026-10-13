@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -45,6 +46,19 @@ OPTIMIZERS = ("adamw", "sgd")
 SCHEDULERS = ("cosine", "onecycle")
 
 
+class TrainingCancelled(Exception):
+    """Raised inside the training loop when ``TrainingHooks.should_stop`` returns True."""
+
+
+@dataclass
+class TrainingHooks:
+    """Callbacks that let a caller such as the API follow and cancel a run."""
+
+    on_batch: Callable[[int, int, int], None] | None = None
+    on_epoch: Callable[[dict], None] | None = None
+    should_stop: Callable[[], bool] | None = None
+
+
 @dataclass
 class TrainConfig:
     model: str = "small_cnn"
@@ -57,6 +71,7 @@ class TrainConfig:
     scheduler_name: str = "cosine"
     epsilon: float = TARGET_EPSILON
     pgd_steps: int = 5
+    adv_ratio: float = 1.0
     val_pgd_steps: int = 3
     final_pgd_steps: int = 10
     seed: int = 42
@@ -71,11 +86,21 @@ class TrainConfig:
     amp: bool = True
 
 
+def attack_tag(mode: str, epsilon: float, pgd_steps: int = 5, adv_ratio: float = 1.0) -> str:
+    """Short label for the attack a model was trained on, e.g. ``pgd5_eps2_ratio1``."""
+
+    if mode == "clean":
+        return "clean"
+    attack = "fgsm_rs" if mode == "fgsm" else f"pgd{pgd_steps}"
+    return f"{attack}_eps{round(epsilon * 255, 2):g}_ratio{adv_ratio:g}"
+
+
 def build_run_config(config: TrainConfig) -> dict:
     spec = MODEL_SPECS[config.model]
     payload = asdict(config)
     payload.update(
         {
+            "tag": attack_tag(config.mode, config.epsilon, config.pgd_steps, config.adv_ratio),
             "image_size": spec.image_size,
             "mean": list(spec.mean),
             "std": list(spec.std),
@@ -105,6 +130,8 @@ def _validate(config: TrainConfig) -> None:
         raise ValueError("epsilon must be between 0 and 1")
     if config.mode == "pgd" and config.pgd_steps < 1:
         raise ValueError("pgd mode needs pgd_steps >= 1")
+    if not 0 <= config.adv_ratio <= 1:
+        raise ValueError("adv_ratio must be between 0 and 1")
     if config.val_per_class < 1:
         raise ValueError("val_per_class must be at least 1")
 
@@ -147,15 +174,24 @@ def _training_inputs(
     labels: torch.Tensor,
     config: TrainConfig,
 ) -> torch.Tensor:
-    """Clean images for standard training, adversarial images for the defenses."""
+    """Clean images for standard training, adversarial images for the defenses.
+
+    With ``adv_ratio`` below 1, only the first share of the (shuffled) batch is
+    attacked and the rest stays clean.
+    """
 
     if config.mode == "clean" or config.epsilon == 0:
         return images
-    if config.mode == "fgsm":
-        return craft_adversarial_examples(model, images, labels, config.epsilon, kind="fgsm_rs")
-    return craft_adversarial_examples(
-        model, images, labels, config.epsilon, kind="pgd", steps=config.pgd_steps
+    count = round(config.adv_ratio * images.shape[0])
+    if count == 0:
+        return images
+    kind = "fgsm_rs" if config.mode == "fgsm" else "pgd"
+    attacked = craft_adversarial_examples(
+        model, images[:count], labels[:count], config.epsilon, kind=kind, steps=config.pgd_steps
     )
+    if count == images.shape[0]:
+        return attacked
+    return torch.cat([attacked, images[count:]])
 
 
 def train_one_epoch(
@@ -168,17 +204,23 @@ def train_one_epoch(
     device: torch.device,
     config: TrainConfig,
     use_amp: bool,
+    hooks: TrainingHooks | None = None,
+    epoch: int = 1,
 ) -> tuple[float, float]:
     model.train()
+    hooks = hooks or TrainingHooks()
     total_loss = 0.0
     total_correct = 0
     total_seen = 0
+    total_batches = _steps_per_epoch(loader, config)
     autocast = torch.autocast(device_type="cuda", dtype=torch.float16) if use_amp else nullcontext()
 
     bar = progress(loader, desc="Train")
     for batch_index, (images, labels) in enumerate(bar):
         if config.max_train_batches is not None and batch_index >= config.max_train_batches:
             break
+        if hooks.should_stop is not None and hooks.should_stop():
+            raise TrainingCancelled
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
@@ -199,6 +241,8 @@ def train_one_epoch(
         total_correct += int(logits.detach().argmax(dim=1).eq(labels).sum().item())
         total_seen += batch_size
         bar.set_postfix(loss=f"{total_loss / total_seen:.3f}", acc=f"{total_correct / total_seen:.1%}")
+        if hooks.on_batch is not None:
+            hooks.on_batch(epoch, batch_index + 1, total_batches)
 
     if total_seen == 0:
         raise RuntimeError("Training saw no images. Check max_train_batches and the data split.")
@@ -234,12 +278,20 @@ def _describe_run(log, config: TrainConfig, device: torch.device, use_amp: bool)
         log(f"Defense: PGD adversarial training with {config.pgd_steps} steps per batch.")
     else:
         log("Standard training on clean images. Validation still measures FGSM and PGD.")
+    if config.mode != "clean" and config.adv_ratio < 1:
+        log(f"Adversarial share of each batch: {config.adv_ratio:.0%}. The rest stays clean.")
 
 
-def run_training(config: TrainConfig) -> dict:
-    """Train on all 10 CIFAR-10 classes and keep the best validation checkpoint."""
+def run_training(config: TrainConfig, hooks: TrainingHooks | None = None) -> dict:
+    """Train on all 10 CIFAR-10 classes and keep the best validation checkpoint.
+
+    ``hooks`` reports progress per batch and per epoch. If ``should_stop``
+    returns True, :class:`TrainingCancelled` propagates after ``last.pt`` of
+    the previous epoch is already on disk.
+    """
 
     _validate(config)
+    hooks = hooks or TrainingHooks()
     if config.num_threads is not None:
         torch.set_num_threads(config.num_threads)
 
@@ -319,6 +371,8 @@ def run_training(config: TrainConfig) -> dict:
                 device,
                 config,
                 use_amp,
+                hooks=hooks,
+                epoch=epoch_number,
             )
             validation = evaluate_loader(
                 model,
@@ -387,6 +441,8 @@ def run_training(config: TrainConfig) -> dict:
             if is_best:
                 torch.save(payload, output_dir / "best.pt")
                 log(f"Saved new best checkpoint (validation score {best_score:.2%}).")
+            if hooks.on_epoch is not None:
+                hooks.on_epoch(row)
     except KeyboardInterrupt:
         log("Interrupted. Resume from last.pt with --resume.")
         raise SystemExit(130) from None
