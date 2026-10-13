@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Chart colours in src/lib/tokens.ts mirror these values. */
+@theme {
+  --color-paper: #eef1f4;
+  --color-surface: #ffffff;
+  --color-ink: #14212b;
+  --color-muted: #55656f;
+  --color-line: #d5dce2;
+  --color-clean: #0f766e;
+  --color-clean-soft: #e3f2f0;
+  --color-adv: #b8235f;
+  --color-adv-soft: #f8e6ee;
+  --color-flag: #b42318;
+  --color-flag-soft: #fdecea;
+  --color-warn: #8a4b06;
+  --color-warn-soft: #fdf1e1;
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Archivo Variable", "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+@layer base {
+  html {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-feature-settings: "tnum" 1;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display text-ink;
+    letter-spacing: -0.01em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-clean);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .pixelated {
+    image-rendering: pixelated;
+  }
+
+  .panel {
+    @apply bg-surface border border-line rounded-lg;
+  }
+
+  .field-label {
+    @apply block text-sm font-medium text-ink;
+  }
+
+  .field-hint {
+    @apply text-xs text-muted;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink;
+  }
+
+  .input:focus {
+    @apply border-clean outline-none ring-2 ring-clean/20;
+  }
+
+  input[type="range"] {
+    accent-color: var(--color-clean);
+  }
+}
