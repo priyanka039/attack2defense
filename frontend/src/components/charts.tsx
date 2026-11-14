@@ -12,9 +12,30 @@ import {
 
 import type { CertifiedPoint, HistoryRow, SweepRow } from "../api/types";
 import { epsilonLabel, percent } from "../lib/format";
-import { colors, seriesColors } from "../lib/tokens";
+import { useTheme } from "../lib/theme";
 
-const axis = { stroke: colors.muted, fontSize: 12 };
+function useChartStyle() {
+  const { palette: colors } = useTheme();
+  return {
+    colors,
+    axis: { stroke: colors.muted, fontSize: 12, tickLine: false },
+    grid: { stroke: colors.line, strokeDasharray: "3 3", vertical: false },
+    tooltip: {
+      contentStyle: {
+        backgroundColor: colors.raised,
+        border: `1px solid ${colors.line}`,
+        borderRadius: 8,
+        color: colors.ink,
+        fontSize: 12,
+      },
+      labelStyle: { color: colors.muted, marginBottom: 4 },
+      itemStyle: { color: colors.ink, padding: 0 },
+      cursor: { stroke: colors.muted, strokeDasharray: "3 3" },
+    },
+    legend: { wrapperStyle: { fontSize: 12, color: colors.muted } },
+  };
+}
+
 const asPercent = (value: number) => `${Math.round(value * 100)}%`;
 
 export interface SweepSeries {
@@ -33,6 +54,7 @@ export function AccuracyVsEpsilon({
   threshold?: number;
   height?: number;
 }) {
+  const { colors, axis, grid, tooltip, legend } = useChartStyle();
   const epsilons = [...new Set(series.flatMap((item) => item.rows.map((row) => row.epsilon)))].sort((a, b) => a - b);
   const data = epsilons.map((epsilon) => {
     const point: Record<string, number> = { epsilon };
@@ -50,24 +72,25 @@ export function AccuracyVsEpsilon({
     <figure>
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-          <CartesianGrid stroke={colors.line} strokeDasharray="3 3" />
+          <CartesianGrid {...grid} />
           <XAxis dataKey="epsilon" tickFormatter={epsilonLabel} {...axis} />
           <YAxis domain={[0, 1]} tickFormatter={asPercent} {...axis} width={44} />
           <Tooltip
+            {...tooltip}
             formatter={(value, name) => [percent(Number(value)), String(name)]}
-            labelFormatter={(value) => `epsilon ${epsilonLabel(Number(value))}`}
+            labelFormatter={(value) => `Attack budget ${epsilonLabel(Number(value))}`}
           />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend {...legend} />
           {threshold !== undefined && (
             <ReferenceLine
               y={threshold}
-              stroke={colors.flag}
+              stroke={colors.warn}
               strokeDasharray="6 4"
-              label={{ value: `threshold ${percent(threshold, 0)}`, fill: colors.flag, fontSize: 11, position: "insideTopRight" }}
+              label={{ value: `target ${percent(threshold, 0)}`, fill: colors.warn, fontSize: 11, position: "insideTopRight" }}
             />
           )}
           {series.flatMap((item, index) => {
-            const color = seriesColors[index % seriesColors.length];
+            const color = colors.series[index % colors.series.length];
             return [
               <Line
                 key={`${item.id}:pgd`}
@@ -75,7 +98,7 @@ export function AccuracyVsEpsilon({
                 name={`${item.label}, PGD`}
                 stroke={color}
                 strokeWidth={2.5}
-                dot={{ r: 3 }}
+                dot={{ r: 3, fill: color }}
                 isAnimationActive={false}
               />,
               <Line
@@ -92,8 +115,8 @@ export function AccuracyVsEpsilon({
           })}
         </LineChart>
       </ResponsiveContainer>
-      <figcaption className="mt-1 text-xs text-muted">
-        Solid lines are accuracy after PGD, dashed lines after FGSM, at each attack budget.
+      <figcaption className="mt-2 text-xs text-muted">
+        Solid lines: accuracy after PGD. Dashed lines: after FGSM. Further right means a bigger attack budget.
       </figcaption>
     </figure>
   );
@@ -101,17 +124,18 @@ export function AccuracyVsEpsilon({
 
 /** Loss and validation accuracy per epoch for one training run. */
 export function TrainingCurves({ history, height = 260 }: { history: HistoryRow[]; height?: number }) {
+  const { colors, axis, grid, tooltip, legend } = useChartStyle();
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <figure>
-        <figcaption className="mb-2 text-sm font-medium">Validation accuracy</figcaption>
+        <figcaption className="mb-2 text-sm font-medium">Validation accuracy (higher is better)</figcaption>
         <ResponsiveContainer width="100%" height={height}>
           <LineChart data={history} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke={colors.line} strokeDasharray="3 3" />
+            <CartesianGrid {...grid} />
             <XAxis dataKey="epoch" {...axis} />
             <YAxis domain={[0, 1]} tickFormatter={asPercent} {...axis} width={44} />
-            <Tooltip formatter={(value, name) => [percent(Number(value)), String(name)]} labelFormatter={(e) => `Epoch ${e}`} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Tooltip {...tooltip} formatter={(value, name) => [percent(Number(value)), String(name)]} labelFormatter={(e) => `Epoch ${e}`} />
+            <Legend {...legend} />
             <Line dataKey="val_clean" name="Clean" stroke={colors.clean} strokeWidth={2} isAnimationActive={false} />
             <Line dataKey="val_fgsm" name="FGSM" stroke={colors.warn} strokeWidth={1.5} strokeDasharray="5 4" isAnimationActive={false} />
             <Line dataKey="val_pgd" name="PGD" stroke={colors.adv} strokeWidth={2} isAnimationActive={false} />
@@ -119,13 +143,13 @@ export function TrainingCurves({ history, height = 260 }: { history: HistoryRow[
         </ResponsiveContainer>
       </figure>
       <figure>
-        <figcaption className="mb-2 text-sm font-medium">Training loss</figcaption>
+        <figcaption className="mb-2 text-sm font-medium">Training loss (lower is better)</figcaption>
         <ResponsiveContainer width="100%" height={height}>
           <LineChart data={history} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke={colors.line} strokeDasharray="3 3" />
+            <CartesianGrid {...grid} />
             <XAxis dataKey="epoch" {...axis} />
             <YAxis {...axis} width={44} tickFormatter={(value: number) => value.toFixed(2)} />
-            <Tooltip formatter={(value) => Number(value).toFixed(3)} labelFormatter={(e) => `Epoch ${e}`} />
+            <Tooltip {...tooltip} formatter={(value) => Number(value).toFixed(3)} labelFormatter={(e) => `Epoch ${e}`} />
             <Line dataKey="train_loss" name="Loss" stroke={colors.ink} strokeWidth={2} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
@@ -136,15 +160,16 @@ export function TrainingCurves({ history, height = 260 }: { history: HistoryRow[
 
 /** Share of images misclassified after each PGD step. */
 export function SuccessPerStep({ values, height = 180 }: { values: number[]; height?: number }) {
+  const { colors, axis, grid, tooltip } = useChartStyle();
   const data = values.map((value, index) => ({ step: index + 1, value }));
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-        <CartesianGrid stroke={colors.line} strokeDasharray="3 3" />
+        <CartesianGrid {...grid} />
         <XAxis dataKey="step" {...axis} allowDecimals={false} />
         <YAxis domain={[0, 1]} tickFormatter={asPercent} {...axis} width={44} />
-        <Tooltip formatter={(value) => [percent(Number(value)), "Fooled"]} labelFormatter={(s) => `After step ${s}`} />
-        <Line dataKey="value" stroke={colors.adv} strokeWidth={2} dot={{ r: 2 }} type="stepAfter" isAnimationActive={false} />
+        <Tooltip {...tooltip} formatter={(value) => [percent(Number(value)), "Fooled"]} labelFormatter={(s) => `After step ${s}`} />
+        <Line dataKey="value" stroke={colors.adv} strokeWidth={2} dot={{ r: 2, fill: colors.adv }} type="stepAfter" isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -152,14 +177,16 @@ export function SuccessPerStep({ values, height = 180 }: { values: number[]; hei
 
 /** Provable accuracy against L2 radius. Not the same as empirical FGSM/PGD accuracy. */
 export function CertifiedAccuracy({ curve, height = 300 }: { curve: CertifiedPoint[]; height?: number }) {
+  const { colors, axis, grid, tooltip } = useChartStyle();
   return (
     <figure>
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={curve} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-          <CartesianGrid stroke={colors.line} strokeDasharray="3 3" />
+          <CartesianGrid {...grid} />
           <XAxis dataKey="radius" {...axis} />
           <YAxis domain={[0, 1]} tickFormatter={asPercent} {...axis} width={44} />
           <Tooltip
+            {...tooltip}
             formatter={(value) => [percent(Number(value)), "Certified accuracy"]}
             labelFormatter={(value) => `L2 radius ${Number(value).toFixed(2)}`}
           />
@@ -168,13 +195,14 @@ export function CertifiedAccuracy({ curve, height = 300 }: { curve: CertifiedPoi
             name="Certified accuracy"
             stroke={colors.clean}
             strokeWidth={2.5}
-            dot={{ r: 3 }}
+            dot={{ r: 3, fill: colors.clean }}
             isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>
-      <figcaption className="mt-1 text-xs text-muted">
-        Share of images whose prediction is correct and whose certified L2 radius is at least this value.
+      <figcaption className="mt-2 text-xs text-muted">
+        Share of images that are classified correctly and provably cannot be changed by any perturbation smaller
+        than this L2 radius.
       </figcaption>
     </figure>
   );

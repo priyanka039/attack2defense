@@ -6,6 +6,14 @@
     <meta name="description" content="Generate FGSM and PGD attacks, train defended models, and measure robustness on CIFAR-10." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Attack2Defense</title>
+    <script>
+      try {
+        var saved = localStorage.getItem("a2d.theme");
+        var theme = saved === "light" || saved === "dark" ? saved
+          : window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.dataset.theme = theme;
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -6,18 +6,36 @@ import { api } from "../api/endpoints";
 import { isActive, type TrainingJob, type TrainingParams } from "../api/types";
 import { useToast } from "../components/Toast";
 import { TrainingCurves } from "../components/charts";
-import { Button, EmptyState, Notice, PageHeader, ProgressBar, Spinner, StatusBadge } from "../components/ui";
+import {
+  Button,
+  buttonClass,
+  Card,
+  EmptyState,
+  InfoTip,
+  Notice,
+  PageHeader,
+  ProgressBar,
+  Segmented,
+  Slider,
+  Spinner,
+  StatusBadge,
+} from "../components/ui";
 import { dateTime, epsilonLabel, percent } from "../lib/format";
+import type { GlossaryKey } from "../lib/glossary";
 import { usePolling, useResource } from "../lib/hooks";
+import { architectureName } from "../lib/results";
+import { useSetup } from "../lib/setup";
 
 const DEFENSES: { mode: TrainingParams["mode"]; title: string; text: string }[] = [
-  { mode: "clean", title: "No defense", text: "Ordinary training on clean images. The baseline to beat." },
-  { mode: "fgsm", title: "FGSM adversarial training", text: "One random-start FGSM step per batch. About 2x the cost." },
-  { mode: "pgd", title: "PGD adversarial training", text: "Several PGD steps per batch. Slower, and the most robust." },
-  { mode: "gaussian", title: "Gaussian noise training", text: "Train with N(0, sigma) noise for the certified-defense track." },
+  { mode: "clean", title: "No defense", text: "Ordinary training. The baseline that attacks break." },
+  { mode: "fgsm", title: "FGSM training", text: "Train on one-step attacks. About 2x slower." },
+  { mode: "pgd", title: "PGD training", text: "Train on multi-step attacks. Slowest, most robust." },
+  { mode: "gaussian", title: "Noise training", text: "Train on random noise, for the certified defense." },
 ];
 
-const DEFAULTS: TrainingParams = {
+type PresetId = "quick" | "stronger" | "custom";
+
+const BASE: TrainingParams = {
   model: "small_cnn",
   mode: "pgd",
   epsilon: 2 / 255,
@@ -32,6 +50,26 @@ const DEFAULTS: TrainingParams = {
   val_per_class: 20,
 };
 
+const PRESETS: Record<Exclude<PresetId, "custom">, Partial<TrainingParams>> = {
+  quick: { model: "small_cnn", epochs: 2, max_train_batches: 40, pgd_steps: 3, batch_size: 128 },
+  stronger: { model: "small_cnn", epochs: 6, max_train_batches: 150, pgd_steps: 5, batch_size: 128 },
+};
+
+/** Very rough images-per-second for one forward+backward pass, used only for the time hint. */
+function estimateSeconds(params: TrainingParams, gpu: boolean): number {
+  const throughput = (params.model === "resnet18" ? 60 : 700) * (gpu ? 12 : 1);
+  const cost = params.mode === "pgd" ? params.pgd_steps + 1 : params.mode === "fgsm" ? 2 : 1;
+  const adversarial = params.mode === "clean" || params.mode === "gaussian" ? 1 : 1 + (cost - 1) * params.adv_ratio;
+  const images = params.epochs * params.max_train_batches * params.batch_size;
+  return (images * adversarial) / throughput + params.epochs * 5;
+}
+
+function duration(secondsTotal: number): string {
+  if (secondsTotal < 90) return "about 1 minute";
+  if (secondsTotal < 3600) return `about ${Math.round(secondsTotal / 60)} minutes`;
+  return `about ${(secondsTotal / 3600).toFixed(1)} hours`;
+}
+
 function NumberField({
   id,
   label,
@@ -42,6 +80,7 @@ function NumberField({
   max,
   step = 1,
   error,
+  term,
 }: {
   id: string;
   label: string;
@@ -52,16 +91,20 @@ function NumberField({
   max?: number;
   step?: number;
   error?: string | null;
+  term?: GlossaryKey;
 }) {
   return (
     <div>
-      <label htmlFor={id} className="field-label">
-        {label}
-      </label>
+      <span className="flex items-center gap-1.5">
+        <label htmlFor={id} className="field-label">
+          {label}
+        </label>
+        {term && <InfoTip term={term} />}
+      </span>
       <input
         id={id}
         type="number"
-        className="input mt-1 tabular-nums"
+        className="input mt-1 font-mono tabular-nums"
         value={value}
         min={min}
         max={max}
@@ -79,11 +122,22 @@ function NumberField({
 
 function TrainingForm({ onStarted }: { onStarted: (job: TrainingJob) => void }) {
   const { notify } = useToast();
-  const [params, setParams] = useState<TrainingParams>(DEFAULTS);
+  const setup = useSetup();
+  const gpu = setup.data?.device.startsWith("cuda") ?? false;
+  const [params, setParams] = useState<TrainingParams>(BASE);
+  const [preset, setPreset] = useState<PresetId>("quick");
   const [problem, setProblem] = useState<ApiProblem | null>(null);
   const [busy, setBusy] = useState(false);
-  const set = (patch: Partial<TrainingParams>) => setParams((current) => ({ ...current, ...patch }));
+  const set = (patch: Partial<TrainingParams>) => {
+    setParams((current) => ({ ...current, ...patch }));
+    setPreset("custom");
+  };
   const fieldError = (field: string) => (problem?.field === field ? problem.message : null);
+
+  function choosePreset(id: PresetId) {
+    setPreset(id);
+    if (id !== "custom") setParams((current) => ({ ...current, ...PRESETS[id] }));
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -91,7 +145,7 @@ function TrainingForm({ onStarted }: { onStarted: (job: TrainingJob) => void }) 
     setProblem(null);
     try {
       const job = await api.startTraining(params);
-      notify("Training started. Progress updates below.", "success");
+      notify("Training started. Watch progress below.", "success");
       onStarted(job);
     } catch (caught) {
       setProblem(toProblem(caught));
@@ -100,122 +154,121 @@ function TrainingForm({ onStarted }: { onStarted: (job: TrainingJob) => void }) 
     }
   }
 
+  const adversarial = params.mode === "fgsm" || params.mode === "pgd";
+
   return (
-    <form onSubmit={submit} className="panel space-y-5 p-5" aria-label="New training run">
-      <fieldset>
-        <legend className="field-label">Defense</legend>
-        <div className="mt-2 grid gap-2 md:grid-cols-3">
-          {DEFENSES.map((defense) => (
-            <label
-              key={defense.mode}
-              className={`cursor-pointer rounded-md border p-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-clean ${
-                params.mode === defense.mode ? "border-ink bg-ink/[0.03]" : "border-line hover:border-ink/40"
-              }`}
-            >
-              <input
-                type="radio"
-                name="mode"
-                className="sr-only"
-                checked={params.mode === defense.mode}
-                onChange={() => set({ mode: defense.mode })}
-              />
-              <span className="block text-sm font-semibold">{defense.title}</span>
-              <span className="mt-1 block text-xs text-muted">{defense.text}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+    <form onSubmit={submit} className="panel space-y-6 p-5 sm:p-6" aria-label="New training run">
+      <Segmented
+        legend="Defense"
+        name="mode"
+        columns={2}
+        value={params.mode}
+        onChange={(mode) => set({ mode })}
+        options={DEFENSES.map((defense) => ({ value: defense.mode, label: defense.title, hint: defense.text }))}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label htmlFor="arch" className="field-label">
-            Architecture
-          </label>
-          <select
-            id="arch"
-            className="input mt-1"
-            value={params.model}
-            onChange={(event) => set({ model: event.target.value as TrainingParams["model"] })}
-          >
-            <option value="small_cnn">Small CNN (fast on a CPU)</option>
-            <option value="resnet18">ResNet-18 (wants a GPU)</option>
-          </select>
-        </div>
-        <NumberField
-          id="epsilon-levels"
-          label="Epsilon, out of 255"
-          value={Math.round(params.epsilon * 255 * 100) / 100}
-          min={0}
-          max={32}
-          step={0.5}
-          onChange={(value) => set({ epsilon: value / 255 })}
-          hint={`Budget ${epsilonLabel(params.epsilon)} for the training attack.`}
-          error={fieldError("epsilon")}
-        />
-        <NumberField
-          id="epochs"
-          label="Epochs"
-          value={params.epochs}
-          min={1}
-          max={30}
-          onChange={(epochs) => set({ epochs })}
-          hint="Full passes over the training subset."
-          error={fieldError("epochs")}
-        />
-        <NumberField
-          id="batches"
-          label="Batches per epoch"
-          value={params.max_train_batches}
-          min={1}
-          max={400}
-          onChange={(max_train_batches) => set({ max_train_batches })}
-          hint={`${(params.max_train_batches * params.batch_size).toLocaleString()} images per epoch.`}
-          error={fieldError("max_train_batches")}
-        />
-      </div>
+      <Segmented
+        legend="How long"
+        name="preset"
+        value={preset}
+        onChange={choosePreset}
+        options={[
+          { value: "quick", label: "Quick demo", hint: "Small CNN, 2 short epochs" },
+          { value: "stronger", label: "Stronger demo", hint: "Small CNN, 6 longer epochs" },
+          { value: "custom", label: "Custom", hint: "Set everything below" },
+        ]}
+      />
 
-      {params.mode !== "clean" && (
-        <div className="grid gap-4 sm:grid-cols-2">
+      {adversarial && (
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Slider
+            id="epsilon-levels"
+            label="Training attack budget"
+            term="epsilon"
+            min={0.5}
+            max={16}
+            step={0.5}
+            value={Math.round(params.epsilon * 255 * 100) / 100}
+            onChange={(value) => set({ epsilon: value / 255 })}
+            display={epsilonLabel(params.epsilon)}
+            hint={fieldError("epsilon") ?? "The model learns to resist attacks up to this size. Reported runs use 2/255."}
+          />
+          <Slider
+            id="ratio"
+            label="Adversarial share of each batch"
+            term="advRatio"
+            min={0}
+            max={1}
+            step={0.05}
+            value={params.adv_ratio}
+            onChange={(adv_ratio) => set({ adv_ratio })}
+            display={percent(params.adv_ratio, 0)}
+            hint="Lower shares keep more clean accuracy but give less robustness."
+          />
+        </div>
+      )}
+
+      <details className="group rounded-lg border border-line bg-paper px-4 py-3 text-sm" open={preset === "custom"}>
+        <summary className="cursor-pointer font-medium text-muted hover:text-ink">
+          <span className="mr-1 inline-block transition-transform group-open:rotate-90" aria-hidden="true">
+            &#9656;
+          </span>
+          Advanced settings
+        </summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <div className="flex justify-between">
-              <label htmlFor="ratio" className="field-label">
-                Adversarial share of each batch
-              </label>
-              <span className="text-sm tabular-nums">{percent(params.adv_ratio, 0)}</span>
-            </div>
-            <input
-              id="ratio"
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={params.adv_ratio}
-              onChange={(event) => set({ adv_ratio: Number(event.target.value) })}
-              className="mt-2 w-full"
-              aria-describedby="ratio-hint"
-            />
-            <p id="ratio-hint" className="field-hint">
-              The rest of each batch stays clean. Lower shares trade robustness for clean accuracy.
-            </p>
+            <label htmlFor="arch" className="field-label">
+              Architecture
+            </label>
+            <select
+              id="arch"
+              className="input mt-1"
+              value={params.model}
+              onChange={(event) => set({ model: event.target.value as TrainingParams["model"] })}
+            >
+              <option value="small_cnn">Small CNN (fast on a CPU)</option>
+              <option value="resnet18">ResNet-18 (needs a GPU)</option>
+            </select>
+            <p className="mt-1 text-xs text-muted">ResNet-18 is what the reported results use.</p>
           </div>
+          <NumberField id="epochs" label="Epochs" value={params.epochs} min={1} max={30} onChange={(epochs) => set({ epochs })} hint="Passes over the training subset." error={fieldError("epochs")} />
+          <NumberField
+            id="batches"
+            label="Batches per epoch"
+            value={params.max_train_batches}
+            min={1}
+            max={400}
+            onChange={(max_train_batches) => set({ max_train_batches })}
+            hint={`${(params.max_train_batches * params.batch_size).toLocaleString()} of 49,000 images per epoch.`}
+            error={fieldError("max_train_batches")}
+          />
           {params.mode === "pgd" && (
             <NumberField
               id="pgd-steps"
               label="PGD steps per batch"
+              term="pgd"
               value={params.pgd_steps}
               min={1}
               max={20}
               onChange={(pgd_steps) => set({ pgd_steps })}
-              hint="More steps make a stronger training attack and a slower epoch."
+              hint="More steps: stronger training attack, slower epoch."
               error={fieldError("pgd_steps")}
             />
           )}
-        </div>
-      )}
-
-      <details className="text-sm">
-        <summary className="cursor-pointer font-medium">Optimizer settings</summary>
-        <div className="mt-3 grid gap-4 sm:grid-cols-3">
+          {params.mode === "gaussian" && (
+            <NumberField
+              id="sigma"
+              label="Noise sigma"
+              term="sigma"
+              value={params.sigma ?? 0.25}
+              min={0.05}
+              max={1}
+              step={0.05}
+              onChange={(sigma) => set({ sigma })}
+              hint="Use the same sigma when certifying."
+              error={fieldError("sigma")}
+            />
+          )}
           <div>
             <label htmlFor="optimizer" className="field-label">
               Optimizer
@@ -230,23 +283,17 @@ function TrainingForm({ onStarted }: { onStarted: (job: TrainingJob) => void }) 
               <option value="sgd">SGD with momentum</option>
             </select>
           </div>
-          <NumberField id="lr" label="Learning rate" value={params.lr} step={0.0005} min={0} onChange={(lr) => set({ lr })} error={fieldError("lr")} />
-          <NumberField
-            id="batch-size"
-            label="Batch size"
-            value={params.batch_size}
-            min={8}
-            max={512}
-            onChange={(batch_size) => set({ batch_size })}
-            error={fieldError("batch_size")}
-          />
+          <NumberField id="lr" label="Learning rate" value={params.lr} step={0.0005} min={0} onChange={(lr) => set({ lr })} hint="0.001 for AdamW, 0.1 for SGD." error={fieldError("lr")} />
+          <NumberField id="batch-size" label="Batch size" value={params.batch_size} min={8} max={512} onChange={(batch_size) => set({ batch_size })} error={fieldError("batch_size")} />
         </div>
       </details>
 
       {problem && !problem.field && <Notice tone="error">{problem.message}</Notice>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <p className="text-xs text-muted">
-          Runs here are short demos on the server. The reported ResNet-18 models were trained for 30 epochs on a GPU.
+        <p className="text-sm text-muted">
+          Estimated time on this server ({gpu ? "GPU" : "CPU"}):{" "}
+          <span className="font-medium text-ink">{duration(estimateSeconds(params, gpu))}</span>. Demo runs are short; the
+          reported models trained for 30 full epochs on a GPU.
         </p>
         <Button type="submit" busy={busy}>
           Start training
@@ -263,11 +310,14 @@ function JobDetail({ job, onCancel }: { job: TrainingJob; onCancel: () => void }
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">
-            {DEFENSES.find((defense) => defense.mode === job.params.mode)?.title} on {job.params.model}
+            {DEFENSES.find((defense) => defense.mode === job.params.mode)?.title} on {architectureName(job.params.model)}
           </h3>
           <p className="text-sm text-muted">
-            Started {dateTime(job.created_at)}. {job.params.epochs} epochs, epsilon {epsilonLabel(job.params.epsilon)}
-            {job.params.mode !== "clean" && `, ${percent(job.params.adv_ratio, 0)} adversarial`}.
+            Started {dateTime(job.created_at)}. {job.params.epochs} epochs
+            {job.params.mode === "fgsm" || job.params.mode === "pgd"
+              ? `, budget ${epsilonLabel(job.params.epsilon)}, ${percent(job.params.adv_ratio, 0)} of each batch attacked`
+              : ""}
+            .
           </p>
         </div>
         {isActive(job.status) && (
@@ -278,39 +328,36 @@ function JobDetail({ job, onCancel }: { job: TrainingJob; onCancel: () => void }
       </div>
 
       <div>
-        <div className="mb-1 flex justify-between text-sm">
-          <span>{job.message}</span>
-          <span className="tabular-nums text-muted">{percent(job.progress, 0)}</span>
+        <div className="mb-1.5 flex justify-between text-sm">
+          <span className="text-muted">{job.message}</span>
+          <span className="font-mono tabular-nums">{percent(job.progress, 0)}</span>
         </div>
         <ProgressBar value={job.progress} label="Training progress" />
       </div>
 
-      {job.error && <Notice tone="error">{job.error}</Notice>}
+      {job.error && <Notice tone="error" title="Training failed">{job.error}</Notice>}
 
       {job.history.length > 0 ? (
         <TrainingCurves history={job.history} height={220} />
       ) : (
-        isActive(job.status) && <p className="text-sm text-muted">Curves appear after the first epoch.</p>
+        isActive(job.status) && <p className="text-sm text-muted">Charts appear after the first epoch finishes.</p>
       )}
 
       {summary && job.result && (
-        <div className="rounded-md border border-line p-4 text-sm">
+        <Notice tone="success" title="Finished. Tested on held-out images">
           <p>
-            Held-out test ({summary.images} images, PGD at {epsilonLabel(summary.epsilon)}): clean{" "}
-            <strong>{percent(summary.clean_accuracy)}</strong>, FGSM <strong>{percent(summary.fgsm_accuracy)}</strong>, PGD{" "}
-            <strong>{percent(summary.pgd_accuracy)}</strong>.
+            {summary.images} images at {epsilonLabel(summary.epsilon)}: clean <strong>{percent(summary.clean_accuracy)}</strong>, FGSM{" "}
+            <strong>{percent(summary.fgsm_accuracy)}</strong>, PGD <strong>{percent(summary.pgd_accuracy)}</strong>.
           </p>
-          <p className="mt-2">
-            <Link to="/attack" className="font-medium text-clean underline">
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link to="/attack" className={buttonClass("attack", "sm")}>
               Attack it in the lab
-            </Link>{" "}
-            or add it to an{" "}
-            <Link to="/evaluation" className="font-medium text-clean underline">
-              evaluation
             </Link>
-            . It is listed as <span className="font-mono text-xs">{job.result.model_id}</span>.
-          </p>
-        </div>
+            <Link to="/evaluation" className={buttonClass("secondary", "sm")}>
+              Compare it with other models
+            </Link>
+          </div>
+        </Notice>
       )}
     </div>
   );
@@ -342,8 +389,9 @@ export function Training() {
   return (
     <div className="space-y-8">
       <PageHeader title="Training">
-        Train a baseline or a defended model. Adversarial training replaces part of every batch with FGSM or PGD
-        examples made on the fly against the current weights.
+        Train a model and choose its defense. <span className="text-ink">Adversarial training</span> attacks each
+        batch on the fly and teaches the model to classify the attacked images correctly. Finished models appear in
+        the Attack lab automatically.
       </PageHeader>
 
       <TrainingForm
@@ -354,41 +402,48 @@ export function Training() {
       />
 
       <section aria-labelledby="runs-heading">
-        <h2 id="runs-heading" className="text-lg font-semibold">
+        <h2 id="runs-heading" className="text-xl font-semibold">
           Your runs
         </h2>
         {jobs.loading && !jobs.data && <Spinner label="Loading runs" />}
         {jobs.error && <Notice tone="error">{jobs.error.message}</Notice>}
         {jobs.data && !list.length && (
           <div className="mt-4">
-            <EmptyState title="No training runs yet">Start one with the form above. The defaults finish in about a minute.</EmptyState>
+            <EmptyState title="No training runs yet">Pick a defense above and press Start training. The quick demo takes about a minute.</EmptyState>
           </div>
         )}
         {current && (
-          <div className="mt-4 grid gap-6 lg:grid-cols-[16rem_1fr]">
-            <ul className="space-y-1" aria-label="Training runs">
+          <div className="mt-4 grid gap-6 lg:grid-cols-[17rem_1fr]">
+            <ul className="space-y-1.5" aria-label="Training runs">
               {list.map((job) => (
                 <li key={job.id}>
                   <button
                     type="button"
                     onClick={() => setSelected(job.id)}
                     aria-current={job.id === current.id}
-                    className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                      job.id === current.id ? "border-ink bg-surface" : "border-transparent hover:bg-surface"
+                    className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                      job.id === current.id ? "border-line-strong bg-raised" : "border-line bg-surface hover:border-line-strong"
                     }`}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="font-medium">{job.params.mode === "clean" ? "No defense" : `${job.params.mode.toUpperCase()} training`}</span>
+                      <span className="font-medium">{DEFENSES.find((defense) => defense.mode === job.params.mode)?.title}</span>
                       <StatusBadge status={job.status} />
                     </span>
-                    <span className="mt-0.5 block text-xs text-muted">{dateTime(job.created_at)}</span>
+                    <span className="mt-0.5 block text-xs text-muted">
+                      {architectureName(job.params.model)}, {dateTime(job.created_at)}
+                    </span>
+                    {isActive(job.status) && (
+                      <span className="mt-2 block">
+                        <ProgressBar value={job.progress} label={`Progress of run ${job.id.slice(0, 6)}`} />
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
-            <div className="panel p-5">
+            <Card>
               <JobDetail job={current} onCancel={() => cancel(current.id)} />
-            </div>
+            </Card>
           </div>
         )}
       </section>

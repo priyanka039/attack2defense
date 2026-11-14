@@ -12,6 +12,7 @@ import type {
   ModelEntry,
   PublicResults,
   Sample,
+  SetupReport,
   TokenResponse,
   TrainingJob,
   TrainingParams,
@@ -27,6 +28,7 @@ export const api = {
   me: () => data<User>(http.get("/auth/me")),
 
   publicResults: () => data<PublicResults>(http.get("/public/results")),
+  setup: () => data<SetupReport>(http.get("/setup")),
   datasets: () => data<Dataset[]>(http.get("/datasets")),
   samples: (dataset: string, params: { label?: string; offset?: number; limit?: number }) =>
     data<{ total: number; offset: number; items: Sample[] }>(http.get(`/datasets/${dataset}/samples`, { params })),

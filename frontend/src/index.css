@@ -1,37 +1,84 @@
 @import "tailwindcss";
 
-/* Chart colours in src/lib/tokens.ts mirror these values. */
+/* Dark "security lab" theme by default; [data-theme="light"] below overrides it.
+   Chart colours in src/lib/tokens.ts mirror both palettes.
+   Teal always means defense / clean / held; pink always means attack / adversarial / fooled. */
 @theme {
-  --color-paper: #eef1f4;
-  --color-surface: #ffffff;
-  --color-ink: #14212b;
-  --color-muted: #55656f;
-  --color-line: #d5dce2;
-  --color-clean: #0f766e;
-  --color-clean-soft: #e3f2f0;
-  --color-adv: #b8235f;
-  --color-adv-soft: #f8e6ee;
-  --color-flag: #b42318;
-  --color-flag-soft: #fdecea;
-  --color-warn: #8a4b06;
-  --color-warn-soft: #fdf1e1;
+  --color-paper: #0b0f17;
+  --color-surface: #121826;
+  --color-raised: #1a2233;
+  --color-ink: #e6edf6;
+  --color-muted: #93a1b5;
+  --color-line: #273246;
+  --color-line-strong: #3a4760;
+
+  --color-clean: #2dd4bf;
+  --color-clean-soft: #0f2c2c;
+  --color-adv: #ff5c93;
+  --color-adv-soft: #36152a;
+  --color-flag: #ff7a7a;
+  --color-flag-soft: #3a1a1e;
+  --color-warn: #f5b84a;
+  --color-warn-soft: #33270f;
 
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Archivo Variable", "IBM Plex Sans", ui-sans-serif, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+/* Accent shades are darker than in the dark theme so text keeps at least 4.5:1 contrast on white. */
+:root[data-theme="light"] {
+  --color-paper: #f4f6fa;
+  --color-surface: #ffffff;
+  --color-raised: #eaeef4;
+  --color-ink: #111827;
+  --color-muted: #536175;
+  --color-line: #dbe1ea;
+  --color-line-strong: #bcc6d4;
+
+  --color-clean: #0f766e;
+  --color-clean-soft: #e1f4f1;
+  --color-adv: #c2185b;
+  --color-adv-soft: #fce8f0;
+  --color-flag: #b42332;
+  --color-flag-soft: #fdeaec;
+  --color-warn: #a35a00;
+  --color-warn-soft: #fdf1dc;
+
+  color-scheme: light;
 }
 
 @layer base {
   html {
     @apply bg-paper text-ink font-sans antialiased;
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  html {
     font-feature-settings: "tnum" 1;
+  }
+
+  body {
+    min-height: 100vh;
   }
 
   h1,
   h2,
   h3 {
     @apply font-display text-ink;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-clean) 35%, transparent);
   }
 
   :focus-visible {
@@ -55,7 +102,7 @@
   }
 
   .panel {
-    @apply bg-surface border border-line rounded-lg;
+    @apply bg-surface border border-line rounded-xl;
   }
 
   .field-label {
@@ -67,14 +114,56 @@
   }
 
   .input {
-    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink;
+    @apply w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink;
   }
 
   .input:focus {
-    @apply border-clean outline-none ring-2 ring-clean/20;
+    @apply border-clean outline-none ring-2 ring-clean/25;
+  }
+
+  .input:disabled {
+    @apply opacity-50;
+  }
+
+  select.input option {
+    background: var(--color-surface);
+  }
+
+  .link {
+    @apply font-medium text-clean underline-offset-2 hover:underline;
+  }
+
+  /* A faint 8 px pixel grid: the unit an attack edits. Used only behind the hero. */
+  .pixel-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--color-line) 55%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--color-line) 55%, transparent) 1px, transparent 1px);
+    background-size: 8px 8px;
   }
 
   input[type="range"] {
     accent-color: var(--color-clean);
+    height: 1.25rem;
+  }
+
+  input[type="range"].range-adv {
+    accent-color: var(--color-adv);
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-clean);
+  }
+
+  input[type="file"]::file-selector-button {
+    @apply mr-3 rounded-md border border-line bg-raised px-3 py-1.5 text-sm text-ink;
+  }
+
+  details > summary {
+    list-style: none;
+  }
+
+  details > summary::-webkit-details-marker {
+    display: none;
   }
 }

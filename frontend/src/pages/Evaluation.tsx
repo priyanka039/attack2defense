@@ -1,25 +1,48 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { toProblem, type ApiProblem } from "../api/client";
 import { api } from "../api/endpoints";
 import { isActive, type EvaluationJob, type EvaluationParams, type SweepRow } from "../api/types";
 import { useToast } from "../components/Toast";
 import { AccuracyVsEpsilon } from "../components/charts";
-import { Button, EmptyState, Notice, PageHeader, ProgressBar, Spinner, StatusBadge } from "../components/ui";
+import {
+  Badge,
+  Button,
+  buttonClass,
+  Card,
+  EmptyState,
+  InfoTip,
+  Notice,
+  PageHeader,
+  ProgressBar,
+  Segmented,
+  Slider,
+  Spinner,
+  StatusBadge,
+} from "../components/ui";
 import { dateTime, epsilonLabel, percent } from "../lib/format";
 import { downloadBlob, usePolling, useResource } from "../lib/hooks";
+import { architectureName } from "../lib/results";
 
 const EPSILON_CHOICES = [1, 2, 4, 8, 16];
+
+type PresetId = "quick" | "thorough" | "custom";
+const PRESETS: Record<Exclude<PresetId, "custom">, { levels: number[]; perClass: number; steps: number }> = {
+  quick: { levels: [2, 4, 8], perClass: 10, steps: 10 },
+  thorough: { levels: [1, 2, 4, 8, 16], perClass: 50, steps: 20 },
+};
 
 function EvaluationForm({ onStarted }: { onStarted: (job: EvaluationJob) => void }) {
   const { notify } = useToast();
   const models = useResource(api.models);
   const usable = useMemo(() => (models.data ?? []).filter((model) => model.has_weights), [models.data]);
   const [modelIds, setModelIds] = useState<string[]>([]);
-  const [levels, setLevels] = useState<number[]>([2, 4, 8]);
+  const [preset, setPreset] = useState<PresetId>("quick");
+  const [levels, setLevels] = useState<number[]>(PRESETS.quick.levels);
   const [threshold, setThreshold] = useState(0.8);
-  const [perClass, setPerClass] = useState(20);
-  const [steps, setSteps] = useState(10);
+  const [perClass, setPerClass] = useState(PRESETS.quick.perClass);
+  const [steps, setSteps] = useState(PRESETS.quick.steps);
   const [problem, setProblem] = useState<ApiProblem | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,6 +51,14 @@ function EvaluationForm({ onStarted }: { onStarted: (job: EvaluationJob) => void
   }, [usable, modelIds.length]);
 
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
+
+  function choosePreset(id: PresetId) {
+    setPreset(id);
+    if (id === "custom") return;
+    setLevels(PRESETS[id].levels);
+    setPerClass(PRESETS[id].perClass);
+    setSteps(PRESETS[id].steps);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -53,75 +84,111 @@ function EvaluationForm({ onStarted }: { onStarted: (job: EvaluationJob) => void
   if (models.loading) return <Spinner label="Loading models" />;
   if (models.error) return <Notice tone="error">{models.error.message}</Notice>;
   if (!usable.length) {
-    return <EmptyState title="No model weights to evaluate">Add Colab checkpoints to checkpoints/ or train a model first.</EmptyState>;
+    return (
+      <EmptyState
+        title="No model weights to evaluate"
+        action={
+          <>
+            <Link to="/training" className={buttonClass("primary")}>
+              Train a model
+            </Link>
+            <Link to="/guide#setup" className={buttonClass("secondary")}>
+              Check setup status
+            </Link>
+          </>
+        }
+      >
+        Evaluations attack every model live, so they need weights. The reported numbers are on the Dashboard.
+      </EmptyState>
+    );
   }
 
   return (
-    <form onSubmit={submit} className="panel space-y-5 p-5" aria-label="New evaluation">
+    <form onSubmit={submit} className="panel space-y-6 p-5 sm:p-6" aria-label="New evaluation">
       <fieldset>
         <legend className="field-label">Models to compare</legend>
-        <p className="field-hint">Every model is attacked on the same class-balanced test images.</p>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          {usable.map((model) => (
-            <label key={model.id} className="flex items-start gap-2 rounded-md border border-line p-2.5 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={modelIds.includes(model.id)}
-                onChange={() => setModelIds(toggle(modelIds, model.id))}
-              />
-              <span>
-                <span className="font-medium">{model.label}</span>
-                <span className="block text-xs text-muted">
-                  {model.architecture}
-                  {model.owner === "you" ? ", your run" : ""} <span className="font-mono">{model.tag}</span>
+        <p className="field-hint">Every model is attacked on exactly the same class-balanced test images.</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {usable.map((model) => {
+            const checked = modelIds.includes(model.id);
+            return (
+              <label
+                key={model.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-clean ${
+                  checked ? "border-clean bg-clean-soft" : "border-line bg-paper hover:border-line-strong"
+                }`}
+              >
+                <input type="checkbox" className="mt-0.5" checked={checked} onChange={() => setModelIds(toggle(modelIds, model.id))} />
+                <span className="min-w-0">
+                  <span className="block font-medium">{model.label}</span>
+                  <span className="block text-xs text-muted">
+                    {architectureName(model.architecture)}
+                    {model.owner === "you" ? ", your run" : ""}
+                    {model.summary ? `, reported PGD ${percent(model.summary.pgd_accuracy, 0)}` : ""}
+                  </span>
                 </span>
-              </span>
-            </label>
-          ))}
+              </label>
+            );
+          })}
         </div>
       </fieldset>
 
+      <Segmented
+        legend="How thorough"
+        name="eval-preset"
+        value={preset}
+        onChange={choosePreset}
+        options={[
+          { value: "quick", label: "Quick check", hint: "100 images, 3 budgets" },
+          { value: "thorough", label: "Thorough", hint: "500 images, 5 budgets, PGD-20" },
+          { value: "custom", label: "Custom", hint: "Choose below" },
+        ]}
+      />
+
       <fieldset>
-        <legend className="field-label">Attack budgets, out of 255</legend>
+        <legend className="flex items-center gap-1.5">
+          <span className="field-label">Attack budgets to test</span>
+          <InfoTip term="epsilon" />
+        </legend>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {EPSILON_CHOICES.map((level) => (
             <label
               key={level}
-              className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm tabular-nums has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-clean ${
-                levels.includes(level) ? "border-ink bg-ink text-white" : "border-line bg-surface"
+              className={`cursor-pointer rounded-lg border px-3 py-1.5 font-mono text-sm tabular-nums has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-clean ${
+                levels.includes(level) ? "border-adv bg-adv-soft text-ink" : "border-line bg-paper text-muted hover:text-ink"
               }`}
             >
-              <input type="checkbox" className="sr-only" checked={levels.includes(level)} onChange={() => setLevels(toggle(levels, level).sort((a, b) => a - b))} />
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={levels.includes(level)}
+                onChange={() => {
+                  setLevels(toggle(levels, level).sort((a, b) => a - b));
+                  setPreset("custom");
+                }}
+              />
               {level}/255
             </label>
           ))}
         </div>
         <p className={`mt-1 text-xs ${problem?.field?.startsWith("epsilons") ? "text-flag" : "text-muted"}`}>
-          {problem?.field?.startsWith("epsilons") ? problem.message : "A standard sweep uses three or more budgets."}
+          {problem?.field?.startsWith("epsilons") ? problem.message : "Three or more budgets show how robustness fades as attacks grow."}
         </p>
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div>
-          <div className="flex justify-between">
-            <label htmlFor="threshold" className="field-label">
-              Minimum acceptable accuracy
-            </label>
-            <span className="text-sm tabular-nums">{percent(threshold, 0)}</span>
-          </div>
-          <input
-            id="threshold"
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={threshold}
-            onChange={(event) => setThreshold(Number(event.target.value))}
-            className="mt-2 w-full"
-          />
-          <p className="field-hint">Results under this are flagged.</p>
-        </div>
+      <div className="grid gap-5 sm:grid-cols-3">
+        <Slider
+          id="threshold"
+          label="Pass mark"
+          term="threshold"
+          min={0}
+          max={1}
+          step={0.05}
+          value={threshold}
+          onChange={setThreshold}
+          display={percent(threshold, 0)}
+          hint="Robust accuracy below this is flagged."
+        />
         <div>
           <label htmlFor="per-class" className="field-label">
             Test images per class
@@ -132,34 +199,47 @@ function EvaluationForm({ onStarted }: { onStarted: (job: EvaluationJob) => void
             min={1}
             max={200}
             value={perClass}
-            onChange={(event) => setPerClass(Number(event.target.value))}
-            className="input mt-1 tabular-nums"
+            onChange={(event) => {
+              setPerClass(Number(event.target.value));
+              setPreset("custom");
+            }}
+            className="input mt-1 font-mono tabular-nums"
           />
           <p className={`mt-1 text-xs ${problem?.field === "images_per_class" ? "text-flag" : "text-muted"}`}>
             {problem?.field === "images_per_class" ? problem.message : `${(perClass * 10).toLocaleString()} images in total.`}
           </p>
         </div>
         <div>
-          <label htmlFor="eval-steps" className="field-label">
-            PGD steps
-          </label>
+          <span className="flex items-center gap-1.5">
+            <label htmlFor="eval-steps" className="field-label">
+              PGD steps
+            </label>
+            <InfoTip term="pgd" />
+          </span>
           <input
             id="eval-steps"
             type="number"
             min={1}
             max={50}
             value={steps}
-            onChange={(event) => setSteps(Number(event.target.value))}
-            className="input mt-1 tabular-nums"
+            onChange={(event) => {
+              setSteps(Number(event.target.value));
+              setPreset("custom");
+            }}
+            className="input mt-1 font-mono tabular-nums"
           />
-          <p className="field-hint">10 matches the reported results.</p>
+          <p className="field-hint mt-1">10 matches the reported results.</p>
         </div>
       </div>
 
       {problem && !problem.field?.startsWith("epsilons") && problem.field !== "images_per_class" && (
         <Notice tone="error">{problem.message}</Notice>
       )}
-      <div className="flex justify-end border-t border-line pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+        <p className="text-sm text-muted">
+          {modelIds.length} model{modelIds.length === 1 ? "" : "s"} x {levels.length} budget{levels.length === 1 ? "" : "s"} x{" "}
+          {(perClass * 10).toLocaleString()} images.
+        </p>
         <Button type="submit" busy={busy} disabled={!modelIds.length || !levels.length}>
           Run evaluation
         </Button>
@@ -170,12 +250,15 @@ function EvaluationForm({ onStarted }: { onStarted: (job: EvaluationJob) => void
 
 function Cell({ row, attack }: { row: SweepRow; attack: "clean" | "fgsm" | "pgd" }) {
   const value = row[`${attack}_accuracy`];
-  const flagged =
-    (attack === "fgsm" && row.fgsm_below_threshold) || (attack === "pgd" && row.pgd_below_threshold) || false;
+  const flagged = (attack === "fgsm" && row.fgsm_below_threshold) || (attack === "pgd" && row.pgd_below_threshold) || false;
+  const passed = attack !== "clean" && !flagged;
   return (
-    <td className={`px-4 py-2.5 tabular-nums ${flagged ? "bg-flag-soft text-flag" : ""}`}>
-      {percent(value)}
-      {flagged && <span className="ml-1.5 text-xs font-medium">below</span>}
+    <td className="px-4 py-2.5">
+      <span className="flex items-center gap-2">
+        <span className={`font-mono tabular-nums ${flagged ? "text-flag" : attack === "clean" ? "text-ink" : "text-clean"}`}>{percent(value)}</span>
+        {flagged && <Badge tone="error">below</Badge>}
+        {passed && <span className="sr-only">passes</span>}
+      </span>
     </td>
   );
 }
@@ -197,37 +280,35 @@ function Report({ job }: { job: EvaluationJob }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-sm text-muted">
-          {result.images.toLocaleString()} test images, PGD with {result.pgd_steps} steps, threshold{" "}
-          {percent(result.threshold, 0)}.
+          {result.images.toLocaleString()} test images, PGD with {result.pgd_steps} steps, pass mark {percent(result.threshold, 0)}.
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => exportAs("csv")}>
-            Export CSV
+          <Button variant="secondary" size="sm" onClick={() => exportAs("csv")}>
+            Download CSV
           </Button>
-          <Button variant="secondary" onClick={() => exportAs("json")}>
-            Export JSON
+          <Button variant="secondary" size="sm" onClick={() => exportAs("json")}>
+            Download JSON
           </Button>
         </div>
       </div>
 
       {result.flags.length > 0 ? (
-        <Notice tone="error">
-          {result.flags.length} of {attackedCount} attack results fell below {percent(result.threshold, 0)}. They are
-          marked "below" in the table.
+        <Notice tone="warn" title={`${result.flags.length} of ${attackedCount} attack results are below ${percent(result.threshold, 0)}`}>
+          They are marked "below" in the table. This is expected for undefended models and for budgets bigger than the one a model was trained on.
         </Notice>
       ) : (
-        <Notice>Every model stayed at or above {percent(result.threshold, 0)} at every budget.</Notice>
+        <Notice tone="success">Every model stayed at or above {percent(result.threshold, 0)} at every budget.</Notice>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-line">
-        <table className="w-full min-w-[36rem] text-sm">
+        <table className="w-full min-w-[38rem] text-sm">
           <thead className="border-b border-line bg-paper text-left text-muted">
             <tr>
               <th scope="col" className="px-4 py-2.5 font-medium">Model</th>
-              <th scope="col" className="px-4 py-2.5 font-medium">Epsilon</th>
+              <th scope="col" className="px-4 py-2.5 font-medium">Budget</th>
               <th scope="col" className="px-4 py-2.5 font-medium">Clean</th>
-              <th scope="col" className="px-4 py-2.5 font-medium">FGSM</th>
-              <th scope="col" className="px-4 py-2.5 font-medium">PGD</th>
+              <th scope="col" className="px-4 py-2.5 font-medium">After FGSM</th>
+              <th scope="col" className="px-4 py-2.5 font-medium">After PGD</th>
             </tr>
           </thead>
           <tbody>
@@ -240,7 +321,7 @@ function Report({ job }: { job: EvaluationJob }) {
                       <span className="block font-mono text-xs font-normal text-muted">{model.model_id}</span>
                     </th>
                   )}
-                  <td className="px-4 py-2.5 tabular-nums">{epsilonLabel(row.epsilon)}</td>
+                  <td className="px-4 py-2.5 font-mono tabular-nums text-muted">{epsilonLabel(row.epsilon)}</td>
                   <Cell row={row} attack="clean" />
                   <Cell row={row} attack="fgsm" />
                   <Cell row={row} attack="pgd" />
@@ -280,8 +361,8 @@ export function Evaluation() {
   return (
     <div className="space-y-8">
       <PageHeader title="Evaluation">
-        Compare models on the same held-out images: clean accuracy, and accuracy after FGSM and PGD at each attack
-        budget. Anything under your threshold is flagged.
+        A fair comparison: every selected model faces the same images and the same attacks at each budget. You get
+        clean accuracy and accuracy after FGSM and PGD, with anything under your pass mark flagged.
       </PageHeader>
 
       <EvaluationForm
@@ -292,32 +373,32 @@ export function Evaluation() {
       />
 
       <section aria-labelledby="reports-heading">
-        <h2 id="reports-heading" className="text-lg font-semibold">
-          Reports
+        <h2 id="reports-heading" className="text-xl font-semibold">
+          Your reports
         </h2>
         {jobs.loading && !jobs.data && <Spinner label="Loading reports" />}
         {jobs.error && <Notice tone="error">{jobs.error.message}</Notice>}
         {jobs.data && !list.length && (
           <div className="mt-4">
-            <EmptyState title="No evaluations yet">Pick models above and run one. 20 images per class takes about a minute on a CPU.</EmptyState>
+            <EmptyState title="No evaluations yet">Pick models above and press Run evaluation. A quick check takes about a minute on a CPU.</EmptyState>
           </div>
         )}
         {current && (
-          <div className="mt-4 grid gap-6 lg:grid-cols-[16rem_1fr]">
-            <ul className="space-y-1" aria-label="Evaluations">
+          <div className="mt-4 grid gap-6 lg:grid-cols-[17rem_1fr]">
+            <ul className="space-y-1.5" aria-label="Evaluations">
               {list.map((job) => (
                 <li key={job.id}>
                   <button
                     type="button"
                     onClick={() => setSelected(job.id)}
                     aria-current={job.id === current.id}
-                    className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                      job.id === current.id ? "border-ink bg-surface" : "border-transparent hover:bg-surface"
+                    className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                      job.id === current.id ? "border-line-strong bg-raised" : "border-line bg-surface hover:border-line-strong"
                     }`}
                   >
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-medium">
-                        {job.params.model_ids.length} model{job.params.model_ids.length > 1 ? "s" : ""}
+                        {job.params.model_ids.length} model{job.params.model_ids.length > 1 ? "s" : ""}, {job.params.epsilons.length} budgets
                       </span>
                       <StatusBadge status={job.status} />
                     </span>
@@ -326,22 +407,22 @@ export function Evaluation() {
                 </li>
               ))}
             </ul>
-            <div className="panel p-5">
+            <Card>
               {isActive(current.status) && (
                 <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span>{current.message}</span>
-                    <Button variant="danger" onClick={() => cancel(current.id)} disabled={current.status === "cancelling"}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="text-muted">{current.message}</span>
+                    <Button variant="danger" size="sm" onClick={() => cancel(current.id)} disabled={current.status === "cancelling"}>
                       Stop evaluation
                     </Button>
                   </div>
                   <ProgressBar value={current.progress} label="Evaluation progress" />
                 </div>
               )}
-              {current.error && <Notice tone="error">{current.error}</Notice>}
+              {current.error && <Notice tone="error" title="Evaluation failed">{current.error}</Notice>}
               {current.status === "cancelled" && <Notice>This evaluation was stopped before it finished.</Notice>}
               {current.status === "succeeded" && current.result && <Report job={current} />}
-            </div>
+            </Card>
           </div>
         )}
       </section>

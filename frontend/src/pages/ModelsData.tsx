@@ -4,11 +4,26 @@ import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
 import type { ModelEntry } from "../api/types";
 import { TrainingCurves } from "../components/charts";
-import { Button, EmptyState, Notice, PageHeader, Spinner } from "../components/ui";
+import { Badge, Button, buttonClass, Card, EmptyState, Notice, PageHeader, Spinner } from "../components/ui";
 import { epsilonLabel, percent, sentenceCase } from "../lib/format";
 import { useResource } from "../lib/hooks";
+import { architectureName, sortModels } from "../lib/results";
 
 const PAGE = 24;
+
+const CONFIG_LABELS: Record<string, string> = {
+  model: "Architecture",
+  mode: "Defense",
+  epsilon: "Attack budget",
+  pgd_steps: "PGD steps",
+  adv_ratio: "Adversarial share",
+  epochs: "Epochs",
+  batch_size: "Batch size",
+  lr: "Learning rate",
+  optimizer_name: "Optimizer",
+  scheduler_name: "Scheduler",
+  seed: "Random seed",
+};
 
 function SampleBrowser({ classes }: { classes: string[] }) {
   const [label, setLabel] = useState<string | undefined>();
@@ -17,13 +32,18 @@ function SampleBrowser({ classes }: { classes: string[] }) {
   const samples = useResource(() => api.samples("cifar10", { label, limit }), [label, limit]);
 
   return (
-    <section aria-labelledby="samples-heading" className="panel p-5">
-      <h2 id="samples-heading" className="text-lg font-semibold">
-        Test images
-      </h2>
-      <p className="mt-1 text-sm text-muted">Pick an image to attack. These come from the held-out test split.</p>
-
-      <div className="mt-4 flex flex-wrap gap-1.5" role="group" aria-label="Filter by class">
+    <Card
+      title="Test images"
+      description="The held-out test split. No model trained on these. Select one to attack it in the lab."
+      actions={
+        selected !== null ? (
+          <Link to={`/attack?sample=${selected}`} className={buttonClass("attack", "sm")}>
+            Attack image #{selected}
+          </Link>
+        ) : undefined
+      }
+    >
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by class">
         {[undefined, ...classes].map((name) => (
           <button
             key={name ?? "all"}
@@ -34,8 +54,8 @@ function SampleBrowser({ classes }: { classes: string[] }) {
               setLimit(PAGE);
               setSelected(null);
             }}
-            className={`rounded-md border px-2.5 py-1 text-sm ${
-              label === name ? "border-ink bg-ink text-white" : "border-line bg-surface hover:border-ink/40"
+            className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+              label === name ? "border-clean bg-clean-soft text-ink" : "border-line text-muted hover:border-line-strong hover:text-ink"
             }`}
           >
             {name ? sentenceCase(name) : "All classes"}
@@ -57,8 +77,8 @@ function SampleBrowser({ classes }: { classes: string[] }) {
                   type="button"
                   onClick={() => setSelected(sample.index)}
                   aria-pressed={selected === sample.index}
-                  className={`block w-full overflow-hidden rounded border-2 ${
-                    selected === sample.index ? "border-clean" : "border-transparent hover:border-line"
+                  className={`block w-full overflow-hidden rounded-md border-2 ${
+                    selected === sample.index ? "border-adv" : "border-transparent hover:border-line-strong"
                   }`}
                 >
                   <img src={sample.image} alt={`Test image ${sample.index}, a ${sample.label}`} className="pixelated aspect-square w-full" />
@@ -70,18 +90,11 @@ function SampleBrowser({ classes }: { classes: string[] }) {
             <span className="text-muted">
               Showing {samples.data.items.length} of {samples.data.total.toLocaleString()}
             </span>
-            <div className="flex gap-2">
-              {selected !== null && (
-                <Link to={`/attack?sample=${selected}`} className="rounded-md bg-ink px-3 py-1.5 font-medium text-white">
-                  Attack image {selected}
-                </Link>
-              )}
-              {samples.data.items.length < samples.data.total && (
-                <Button variant="secondary" busy={samples.loading} onClick={() => setLimit(limit + PAGE)}>
-                  Show more
-                </Button>
-              )}
-            </div>
+            {samples.data.items.length < samples.data.total && (
+              <Button variant="secondary" size="sm" busy={samples.loading} onClick={() => setLimit(limit + PAGE)}>
+                Show more
+              </Button>
+            )}
           </div>
         </>
       )}
@@ -90,7 +103,7 @@ function SampleBrowser({ classes }: { classes: string[] }) {
           <Spinner label="Loading images" />
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -103,12 +116,16 @@ function ModelDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
         {config.map(([key, value]) => (
           <div key={key}>
-            <dt className="text-muted">{key.replace(/_/g, " ")}</dt>
-            <dd className="font-medium tabular-nums">
-              {key === "epsilon" && typeof value === "number" ? epsilonLabel(value) : String(value)}
+            <dt className="text-xs text-muted">{CONFIG_LABELS[key] ?? key.replace(/_/g, " ")}</dt>
+            <dd className="font-mono tabular-nums">
+              {key === "epsilon" && typeof value === "number"
+                ? epsilonLabel(value)
+                : key === "model"
+                  ? architectureName(String(value))
+                  : String(value)}
             </dd>
           </div>
         ))}
@@ -119,90 +136,86 @@ function ModelDetail({ id }: { id: string }) {
         <p className="text-sm text-muted">No training history was saved for this model.</p>
       )}
       {model.has_examples && (
-        <figure>
-          <img
-            src={api.examplesUrl(model.id)}
-            alt={`Before and after attack examples for ${model.label}`}
-            className="w-full rounded border border-line"
-          />
+        <figure className="overflow-hidden rounded-lg bg-white p-2">
+          <img src={api.examplesUrl(model.id)} alt={`Before and after attack examples for ${model.label}`} className="w-full" />
         </figure>
       )}
     </div>
   );
 }
 
-function ModelTable({ models }: { models: ModelEntry[] }) {
-  const [open, setOpen] = useState<string | null>(null);
-
+function ModelCard({ model, open, onToggle }: { model: ModelEntry; open: boolean; onToggle: () => void }) {
+  const tone = model.mode === "clean" ? "adv" : "success";
   return (
-    <section aria-labelledby="models-heading">
-      <h2 id="models-heading" className="text-lg font-semibold">
-        Model registry
-      </h2>
-      <p className="mt-1 text-sm text-muted">
-        Every checkpoint the server found, with the attack it was trained against. Models without weights show their
-        reported results only.
-      </p>
-      <div className="panel mt-4 overflow-x-auto">
-        <table className="w-full min-w-[46rem] text-sm">
-          <thead className="border-b border-line text-left text-muted">
-            <tr>
-              <th scope="col" className="px-4 py-3 font-medium">Model</th>
-              <th scope="col" className="px-4 py-3 font-medium">Trained on</th>
-              <th scope="col" className="px-4 py-3 font-medium">Clean</th>
-              <th scope="col" className="px-4 py-3 font-medium">PGD</th>
-              <th scope="col" className="px-4 py-3 font-medium">Weights</th>
-              <th scope="col" className="px-4 py-3"><span className="sr-only">Details</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((model) => (
-              <ModelRow key={model.id} model={model} open={open === model.id} onToggle={() => setOpen(open === model.id ? null : model.id)} />
-            ))}
-          </tbody>
-        </table>
+    <li className={`panel flex flex-col p-4 ${open ? "border-clean" : ""}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-semibold">{model.label}</p>
+          <p className="text-xs text-muted">
+            {architectureName(model.architecture)}
+            {model.epochs ? `, ${model.epochs} epochs` : ""}
+            {model.owner === "you" ? ", your run" : ""}
+          </p>
+        </div>
+        {model.has_weights ? <Badge tone="success">Live</Badge> : <Badge>Results only</Badge>}
       </div>
-    </section>
+      {model.summary ? (
+        <dl className="mt-4 grid grid-cols-2 gap-3">
+          <div>
+            <dt className="text-xs text-muted">Clean</dt>
+            <dd className="font-mono text-lg font-semibold tabular-nums text-clean">{percent(model.summary.clean_accuracy)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted">Under PGD</dt>
+            <dd className={`font-mono text-lg font-semibold tabular-nums ${model.summary.pgd_accuracy >= 0.5 ? "text-clean" : "text-adv"}`}>
+              {percent(model.summary.pgd_accuracy)}
+            </dd>
+          </div>
+        </dl>
+      ) : (
+        <p className="mt-4 text-sm text-muted">Not tested yet. Test numbers appear when training finishes.</p>
+      )}
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-3">
+        <Badge tone={tone}>{model.mode === "clean" ? "Undefended" : `Defense: ${model.mode.toUpperCase()}`}</Badge>
+        <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={open}>
+          {open ? "Hide details" : "Details"}
+        </Button>
+      </div>
+      {!model.has_weights && (
+        <p className="mt-2 text-xs text-muted">
+          Add <span className="font-mono">checkpoints/{model.id}/best.pt</span> to attack it live.
+        </p>
+      )}
+    </li>
   );
 }
 
-function ModelRow({ model, open, onToggle }: { model: ModelEntry; open: boolean; onToggle: () => void }) {
+function ModelGrid({ models }: { models: ModelEntry[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const opened = models.find((model) => model.id === open);
+
   return (
-    <>
-      <tr className="border-b border-line">
-        <th scope="row" className="px-4 py-3 text-left font-medium">
-          {model.label}
-          <span className="block text-xs font-normal text-muted">
-            {model.architecture}
-            {model.owner === "you" ? ", your run" : ""}
-          </span>
-        </th>
-        <td className="px-4 py-3 font-mono text-xs">{model.tag}</td>
-        <td className="px-4 py-3 tabular-nums">{percent(model.summary?.clean_accuracy)}</td>
-        <td className="px-4 py-3 tabular-nums">{percent(model.summary?.pgd_accuracy)}</td>
-        <td className="px-4 py-3">
-          {model.has_weights ? (
-            <span className="text-clean">Available</span>
-          ) : (
-            <span className="text-muted" title={`Download best.pt into checkpoints/${model.id}/`}>
-              Results only
-            </span>
-          )}
-        </td>
-        <td className="px-4 py-3 text-right">
-          <Button variant="ghost" onClick={onToggle} aria-expanded={open} className="px-2 py-1">
-            {open ? "Hide details" : "Details"}
-          </Button>
-        </td>
-      </tr>
-      {open && (
-        <tr className="border-b border-line bg-paper/60">
-          <td colSpan={6} className="px-4 py-5">
-            <ModelDetail id={model.id} />
-          </td>
-        </tr>
+    <section aria-labelledby="models-heading" className="space-y-4">
+      <div>
+        <h2 id="models-heading" className="text-xl font-semibold">
+          Trained models
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Every model the server found. "Live" models have weights here and can be attacked; the rest show their reported
+          results only.
+        </p>
+      </div>
+      <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {models.map((model) => (
+          <ModelCard key={model.id} model={model} open={open === model.id} onToggle={() => setOpen(open === model.id ? null : model.id)} />
+        ))}
+      </ul>
+      {opened && (
+        <Card title={`${opened.label}, ${architectureName(opened.architecture)}`} description={<span className="font-mono">{opened.id}</span>}>
+          <ModelDetail id={opened.id} />
+        </Card>
       )}
-    </>
+    </section>
   );
 }
 
@@ -212,42 +225,47 @@ export function ModelsData() {
   const cifar = datasets.data?.[0];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <PageHeader title="Models and data">
-        The dataset the models were trained on, the held-out images you can attack, and every trained checkpoint.
+        The dataset the models learned from, the test images you can attack, and every trained model with its numbers.
       </PageHeader>
-
-      {datasets.error && <Notice tone="error">{datasets.error.message}</Notice>}
-      {cifar && (
-        <section aria-labelledby="dataset-heading" className="panel p-5">
-          <h2 id="dataset-heading" className="text-lg font-semibold">
-            {cifar.title}
-          </h2>
-          <p className="mt-1 text-sm text-muted">{cifar.description}</p>
-          <dl className="mt-4 grid grid-cols-3 gap-4 text-sm sm:max-w-md">
-            {Object.entries(cifar.splits).map(([split, count]) => (
-              <div key={split}>
-                <dt className="capitalize text-muted">{split}</dt>
-                <dd className="text-lg font-semibold tabular-nums">{count.toLocaleString()}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="mt-3 text-xs text-muted">
-            The validation split is 100 training images per class, fixed by seed 42 and used only to pick the best
-            checkpoint.
-          </p>
-        </section>
-      )}
-      {cifar && <SampleBrowser classes={cifar.classes} />}
 
       {models.loading && <Spinner label="Loading models" />}
       {models.error && <Notice tone="error">{models.error.message}</Notice>}
       {models.data &&
         (models.data.length ? (
-          <ModelTable models={models.data} />
+          <ModelGrid models={sortModels(models.data)} />
         ) : (
-          <EmptyState title="No models found">Train one on the Training page, or add Colab checkpoints to checkpoints/.</EmptyState>
+          <EmptyState
+            title="No models found"
+            action={
+              <Link to="/training" className={buttonClass("primary")}>
+                Train a model
+              </Link>
+            }
+          >
+            Train one on the Training page, or install the Colab checkpoints into checkpoints/.
+          </EmptyState>
         ))}
+
+      {datasets.error && <Notice tone="error">{datasets.error.message}</Notice>}
+      {cifar && (
+        <Card title={cifar.title} description={cifar.description}>
+          <dl className="grid grid-cols-3 gap-4 text-sm sm:max-w-md">
+            {Object.entries(cifar.splits).map(([split, count]) => (
+              <div key={split}>
+                <dt className="capitalize text-muted">{split}</dt>
+                <dd className="font-mono text-xl font-semibold tabular-nums">{count.toLocaleString()}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-xs text-muted">
+            Validation is 100 training images per class, fixed by seed 42 and used only to choose the best checkpoint. The test
+            split is used only for the reported numbers.
+          </p>
+        </Card>
+      )}
+      {cifar && <SampleBrowser classes={cifar.classes} />}
     </div>
   );
 }

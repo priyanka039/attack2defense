@@ -15,9 +15,9 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 const toneClasses: Record<Tone, string> = {
-  info: "border-line bg-surface text-ink",
-  error: "border-flag/40 bg-flag-soft text-flag",
-  success: "border-clean/40 bg-clean-soft text-clean",
+  info: "border-line-strong bg-raised text-ink",
+  error: "border-flag/50 bg-flag-soft text-flag",
+  success: "border-clean/50 bg-clean-soft text-clean",
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={message.id}
             role={message.tone === "error" ? "alert" : "status"}
-            className={`pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-md border px-4 py-3 text-sm shadow-sm ${toneClasses[message.tone]}`}
+            className={`pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-xl shadow-black/40 ${toneClasses[message.tone]}`}
           >
             <p className="flex-1">{message.text}</p>
             <button

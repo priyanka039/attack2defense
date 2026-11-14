@@ -243,6 +243,30 @@ export interface CertifyResult {
 
 export type CertifyJob = Job<CertifyParams, CertifyResult>;
 
+export interface SetupCheck {
+  id: "dataset" | "results" | "weights" | "reported_weights";
+  label: string;
+  ok: boolean;
+  hint: string | null;
+}
+
+export interface SetupRun {
+  id: string;
+  architecture: string | null;
+  mode: string;
+  has_weights: boolean;
+  has_results: boolean;
+  checkpoint: string | null;
+}
+
+export interface SetupReport {
+  ready: boolean;
+  device: string;
+  checks: SetupCheck[];
+  runs: SetupRun[];
+  missing_reported_weights: { id: string; expected_path: string }[];
+}
+
 export function isActive(status: JobStatus): boolean {
   return status === "queued" || status === "running" || status === "cancelling";
 }

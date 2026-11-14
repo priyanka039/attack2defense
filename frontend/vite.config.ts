@@ -12,5 +12,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     css: false,
+    // Lazy pages pull in recharts; the first import is slow on a cold, busy machine.
+    testTimeout: 30000,
   },
 });

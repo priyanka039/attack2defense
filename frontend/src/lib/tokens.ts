@@ -1,13 +1,46 @@
-// SVG chart attributes cannot read CSS variables; keep in sync with @theme in index.css.
-export const colors = {
-  ink: "#14212b",
-  muted: "#55656f",
-  line: "#d5dce2",
-  clean: "#0f766e",
-  adv: "#b8235f",
-  flag: "#b42318",
-  warn: "#8a4b06",
-};
+// SVG chart attributes cannot read CSS variables; keep in sync with the palettes in index.css.
+export type Theme = "dark" | "light";
 
-// One distinct hue per model in comparison charts.
-export const seriesColors = ["#0f766e", "#b8235f", "#2f5fa7", "#8a4b06", "#5b3f9e", "#3d6b2a"];
+export interface Palette {
+  paper: string;
+  surface: string;
+  raised: string;
+  ink: string;
+  muted: string;
+  line: string;
+  clean: string;
+  adv: string;
+  flag: string;
+  warn: string;
+  // One distinct hue per model in comparison charts, readable on this theme's surface.
+  series: string[];
+}
+
+export const palettes: Record<Theme, Palette> = {
+  dark: {
+    paper: "#0b0f17",
+    surface: "#121826",
+    raised: "#1a2233",
+    ink: "#e6edf6",
+    muted: "#93a1b5",
+    line: "#273246",
+    clean: "#2dd4bf",
+    adv: "#ff5c93",
+    flag: "#ff7a7a",
+    warn: "#f5b84a",
+    series: ["#2dd4bf", "#ff5c93", "#7aa2ff", "#f5b84a", "#c49bff", "#8bd17c"],
+  },
+  light: {
+    paper: "#f4f6fa",
+    surface: "#ffffff",
+    raised: "#eaeef4",
+    ink: "#111827",
+    muted: "#536175",
+    line: "#dbe1ea",
+    clean: "#0f766e",
+    adv: "#c2185b",
+    flag: "#b42332",
+    warn: "#a35a00",
+    series: ["#0f766e", "#c2185b", "#2f5bd3", "#a35a00", "#7c3aed", "#3f7d20"],
+  },
+};
