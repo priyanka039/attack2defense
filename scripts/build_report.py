@@ -427,6 +427,13 @@ def _verdict(runs: list[Run]) -> dict[str, str]:
             f"{(ROBUST_ACCURACY_TARGET - best_pgd) * 100:.1f} points short of the 80% target."
         )
 
+    gap = abs(ROBUST_ACCURACY_TARGET - best_pgd) * 100
+    target_line = (
+        "The 80% robustness target is met."
+        if best_pgd >= ROBUST_ACCURACY_TARGET
+        else f"The 80% robustness target is {gap:.1f} points away."
+    )
+    model_name = MODEL_NAMES.get(str(best.summary["model"]), str(best.summary["model"]))
     if baseline is not None and best is not baseline:
         gain = (best_pgd - baseline.summary["pgd_accuracy"]) * 100
         cost = (baseline.summary["clean_accuracy"] - best.summary["clean_accuracy"]) * 100
@@ -437,12 +444,20 @@ def _verdict(runs: list[Run]) -> dict[str, str]:
             f"accuracy under attack by **{gain:.1f} points**, at a cost of {cost:.1f} points "
             f"on clean images."
         )
+        readme_blurb = (
+            f"Undefended {model_name} falls from {_pct(baseline.summary['clean_accuracy'])} "
+            f"on clean images to {_pct(baseline.summary['pgd_accuracy'])} under 10-step PGD. "
+            f"Adversarial training recovers **{_pct(best_pgd)}** under the same attack "
+            f"(+{gain:.1f} points) and costs {cost:.1f} points on clean images. {target_line}"
+        )
     else:
         comparison = "No undefended baseline was included in this results set."
+        readme_blurb = f"{comparison} {target_line}"
 
     return {
         "verdict": verdict,
         "comparison": comparison,
+        "readme_blurb": readme_blurb,
         "best_label": best.label,
         "best_name": best.name,
         "baseline_name": baseline.name if baseline else best.name,
@@ -542,6 +557,7 @@ def write_report(
         "test_images": f"{int(main_runs[0].summary['images']):,}",
         "verdict": verdict["verdict"],
         "comparison": verdict["comparison"],
+        "readme_blurb": verdict["readme_blurb"],
         "headline_table": table_headline(main_runs),
         "sweep_table": table_sweep(main_runs),
         "per_class_table": table_per_class(main_runs),
@@ -605,7 +621,8 @@ def update_readme(readme: Path, values: dict[str, str], note: str) -> None:
 
     if not readme.exists():
         return
-    text = readme.read_text(encoding="utf-8")
+    data = readme.read_bytes()
+    text = data.decode("utf-16-le") if len(data) > 1 and data[1:2] == b"\x00" else data.decode("utf-8")
     if README_START not in text or README_END not in text:
         return
     block = "\n\n".join(
@@ -613,17 +630,21 @@ def update_readme(readme: Path, values: dict[str, str], note: str) -> None:
         for part in (
             "## Results",
             f"> {note}" if note else "",
-            values["verdict"],
+            values.get("readme_blurb", values["comparison"]),
             values["headline_table"],
             values["fig_overall"],
-            "Before/after attack images, per-class results, and the epsilon sweep are in "
-            "[REPORT.md](REPORT.md).",
+            "Before-and-after attack images, per-class numbers, and stronger-attack sweeps "
+            "are in [REPORT.md](REPORT.md).",
         )
         if part
     )
     head, rest = text.split(README_START, 1)
     _, tail = rest.split(README_END, 1)
-    readme.write_text(f"{head}{README_START}\n{block}\n{README_END}{tail}", encoding="utf-8")
+    readme.write_text(
+        f"{head}{README_START}\n{block}\n{README_END}{tail}".replace("\r\n", "\n"),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def main() -> None:

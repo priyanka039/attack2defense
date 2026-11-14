@@ -202,6 +202,42 @@ def _cmd_benchmark_attacks(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_doctor(args: argparse.Namespace) -> None:
+    from attack2defense.setup_check import inspect_setup
+
+    report = inspect_setup(args.data_dir, args.checkpoint_roots, args.results_roots)
+    print("Attack2Defense setup check\n", flush=True)
+    for check in report["checks"]:
+        mark = "ok  " if check["ok"] else "MISS"
+        print(f"  [{mark}] {check['label']}", flush=True)
+        if check["hint"]:
+            print(f"         {check['hint']}", flush=True)
+
+    print("\nRuns found:", flush=True)
+    if not report["runs"]:
+        print("  none", flush=True)
+    for run in report["runs"]:
+        weights = "weights" if run["has_weights"] else "no weights"
+        results = "results" if run["has_results"] else "no results"
+        print(f"  {run['id']:<22} {run['architecture'] or '?':<10} {run['mode']:<9} {weights}, {results}")
+
+    if report["missing_reported_weights"]:
+        print("\nMissing reported weights (copy each best.pt here):", flush=True)
+        for item in report["missing_reported_weights"]:
+            print(f"  {item['expected_path']}", flush=True)
+    live = sum(run["has_weights"] for run in report["runs"])
+    if not report["ready"]:
+        verdict = "Not ready for live attacks yet."
+    elif report["missing_reported_weights"]:
+        verdict = (
+            f"Ready for live attacks on {live} model(s). "
+            "The reported models show their results only until their weights are installed."
+        )
+    else:
+        verdict = "Ready: every model can be attacked live."
+    print(f"\n{verdict}", flush=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="attack2defense",
@@ -354,6 +390,16 @@ def build_parser() -> argparse.ArgumentParser:
     extra.add_argument("--cw-steps", type=int, default=20)
     extra.add_argument("--max-images", type=int, default=100)
     extra.set_defaults(func=_cmd_benchmark_attacks)
+
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Check the dataset, trained weights, and published results.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    doctor.add_argument("--data-dir", default="data")
+    doctor.add_argument("--checkpoint-roots", nargs="+", default=["checkpoints", "outputs/cpu_preview"])
+    doctor.add_argument("--results-roots", nargs="+", default=["results"])
+    doctor.set_defaults(func=_cmd_doctor)
     return parser
 
 
