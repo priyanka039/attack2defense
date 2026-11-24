@@ -1,5 +1,5 @@
 # Attack2Defense — single image for Render (API + React UI + CPU PyTorch).
-# Needs ~2 GB RAM at runtime (Render Standard). Free 512 MB will OOM on import.
+# Tuned for Render Free (512 MB). If the process is killed on boot, RAM is the limit.
 
 # --- frontend ---
 FROM node:22-bookworm-slim AS frontend

@@ -4,18 +4,21 @@ One Docker Web Service serves the React UI and the FastAPI backend from the same
 
 ## Requirements
 
-- Render **Standard** plan (2 GB RAM). Free/Starter (512 MB) runs out of memory when importing PyTorch.
 - GitHub repo connected to Render.
+- **Free** plan is the default in `render.yaml` (no payment). Free = **512 MB RAM**, sleeps after ~15 minutes idle, first open can take ~1 minute.
+- If the service crashes with out-of-memory when loading PyTorch, you either stay on free and keep attacks tiny, or upgrade later to a 2 GB plan.
 
 ## Deploy
 
 1. Push `main` (includes `Dockerfile`, `render.yaml`, and `deploy/publish/`).
 2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**.
-3. Select the `attack2defense` repo and apply `render.yaml`.
+3. Select the `attack2defense` repo and apply `render.yaml` (plan **free**).
 4. Wait for the first build (often 10–20 minutes: Node build + CPU PyTorch).
 5. Open `https://<service>.onrender.com`.
 
-Or: **New** → **Web Service** → Docker → root `Dockerfile`, health check `/api/health`, plan Standard, env `A2D_SECRET_KEY` (generate).
+Or: **New** → **Web Service** → Docker → root `Dockerfile`, health check `/api/health`, plan **Free**, env `A2D_SECRET_KEY` (generate).
+
+Do **not** add a credit card unless Render forces account verification for your region — Free web services do not require paid compute.
 
 ## What ships in the image
 

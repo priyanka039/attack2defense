@@ -1,13 +1,14 @@
-# Blueprint: one Web Service hosts API + UI.
+# Blueprint: one free Web Service hosts API + UI (no credit card).
 # https://dashboard.render.com → New → Blueprint → connect this repo.
 #
-# Plan must be at least Standard (2 GB RAM). Free/Starter (512 MB) OOMs on PyTorch.
+# Free = 512 MB RAM. PyTorch is tight; if the service OOMs, use Quick demos only
+# or upgrade later. Free instances also sleep after ~15 minutes idle.
 
 services:
   - type: web
     name: attack2defense
     runtime: docker
-    plan: standard
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
@@ -17,10 +18,17 @@ services:
       - key: A2D_DOWNLOAD_DATA
         value: "true"
       - key: A2D_MAX_TRAIN_EPOCHS
-        value: "5"
+        value: "3"
       - key: A2D_MAX_TRAIN_BATCHES
-        value: "80"
+        value: "40"
       - key: A2D_MAX_EVAL_IMAGES_PER_CLASS
-        value: "20"
+        value: "10"
       - key: A2D_MAX_ATTACK_BATCH
-        value: "4"
+        value: "2"
+      # Keep Torch from grabbing huge thread pools on a tiny free instance.
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: TORCH_NUM_THREADS
+        value: "1"
