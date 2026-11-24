@@ -1,0 +1,4 @@
+model,mode,epsilon,pgd_steps,images,clean_accuracy,fgsm_accuracy,pgd_accuracy,target,target_met
+small_cnn,clean,0.00784313725490196,10,10000,0.6944,0.1959,0.1083,0.8,False
+small_cnn,clean,0.01568627450980392,10,1000,0.702,0.072,0.004,0.8,False
+small_cnn,clean,0.03137254901960784,10,1000,0.702,0.03,0.0,0.8,False

@@ -1,0 +1,51 @@
+{
+  "model": "resnet18",
+  "mode": "fgsm",
+  "epochs": 30,
+  "batch_size": 128,
+  "lr": 0.1,
+  "weight_decay": 0.0005,
+  "optimizer_name": "sgd",
+  "scheduler_name": "onecycle",
+  "epsilon": 0.00784313725490196,
+  "pgd_steps": 5,
+  "val_pgd_steps": 3,
+  "final_pgd_steps": 10,
+  "seed": 42,
+  "num_workers": 2,
+  "output_dir": "outputs/resnet18_fgsm",
+  "data_dir": "/content/data",
+  "val_per_class": 100,
+  "max_train_batches": null,
+  "final_eval": true,
+  "resume": null,
+  "num_threads": null,
+  "amp": true,
+  "image_size": 32,
+  "mean": [
+    0.4914,
+    0.4822,
+    0.4465
+  ],
+  "std": [
+    0.247,
+    0.2435,
+    0.2616
+  ],
+  "num_classes": 10,
+  "class_names": [
+    "airplane",
+    "automobile",
+    "bird",
+    "cat",
+    "deer",
+    "dog",
+    "frog",
+    "horse",
+    "ship",
+    "truck"
+  ],
+  "pretrained": false,
+  "description": "ResNet-18 adapted to 32x32 CIFAR images (3x3 stride-1 stem, no initial max-pool). This is the practical CPU default.",
+  "robust_accuracy_target": 0.8
+}

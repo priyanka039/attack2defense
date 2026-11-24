@@ -1,0 +1,3 @@
+clean_accuracy,fgsm_accuracy,pgd_accuracy,images,epsilon,pgd_steps,model,mode
+0.14,0.108,0.08,500,0.00784313725490196,10,resnet50,imagenet-zeroshot
+0.254,0.14,0.152,500,0.00784313725490196,10,vit_b_16,imagenet-zeroshot

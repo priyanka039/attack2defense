@@ -23,8 +23,15 @@ class Settings(BaseSettings):
     checkpoint_roots: list[Path] = [PROJECT_ROOT / "checkpoints", PROJECT_ROOT / "outputs" / "cpu_preview"]
     results_roots: list[Path] = [PROJECT_ROOT / "results"]
     runs_dir: Path = PROJECT_ROOT / "outputs" / "api_runs"
+    # When set (tests / custom images), serve this Vite build instead of frontend/dist.
+    frontend_dist: Path | None = None
 
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
 
     # Limits that keep a CPU-only server responsive.
     max_attack_batch: int = 16

@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "model": "resnet18",
+    "mode": "clean",
+    "epsilon": 0.00784313725490196,
+    "pgd_steps": 10,
+    "images": 10000,
+    "clean_accuracy": 0.9362,
+    "fgsm_accuracy": 0.3166,
+    "pgd_accuracy": 0.0612,
+    "target": 0.8,
+    "target_met": false
+  },
+  "per_class": [
+    {
+      "class": "airplane",
+      "images": 1000,
+      "clean_accuracy": 0.944,
+      "fgsm_accuracy": 0.34,
+      "pgd_accuracy": 0.036
+    },
+    {
+      "class": "automobile",
+      "images": 1000,
+      "clean_accuracy": 0.967,
+      "fgsm_accuracy": 0.537,
+      "pgd_accuracy": 0.214
+    },
+    {
+      "class": "bird",
+      "images": 1000,
+      "clean_accuracy": 0.921,
+      "fgsm_accuracy": 0.262,
+      "pgd_accuracy": 0.05
+    },
+    {
+      "class": "cat",
+      "images": 1000,
+      "clean_accuracy": 0.845,
+      "fgsm_accuracy": 0.114,
+      "pgd_accuracy": 0.007
+    },
+    {
+      "class": "deer",
+      "images": 1000,
+      "clean_accuracy": 0.96,
+      "fgsm_accuracy": 0.206,
+      "pgd_accuracy": 0.012
+    },
+    {
+      "class": "dog",
+      "images": 1000,
+      "clean_accuracy": 0.898,
+      "fgsm_accuracy": 0.206,
+      "pgd_accuracy": 0.015
+    },
+    {
+      "class": "frog",
+      "images": 1000,
+      "clean_accuracy": 0.956,
+      "fgsm_accuracy": 0.249,
+      "pgd_accuracy": 0.046
+    },
+    {
+      "class": "horse",
+      "images": 1000,
+      "clean_accuracy": 0.961,
+      "fgsm_accuracy": 0.298,
+      "pgd_accuracy": 0.057
+    },
+    {
+      "class": "ship",
+      "images": 1000,
+      "clean_accuracy": 0.958,
+      "fgsm_accuracy": 0.474,
+      "pgd_accuracy": 0.048
+    },
+    {
+      "class": "truck",
+      "images": 1000,
+      "clean_accuracy": 0.952,
+      "fgsm_accuracy": 0.48,
+      "pgd_accuracy": 0.127
+    }
+  ]
+}

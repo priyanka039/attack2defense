@@ -1,0 +1,11 @@
+dataset_index,true_class,clean_prediction,fgsm_prediction,pgd_prediction
+3,airplane,airplane,ship,ship
+6,automobile,automobile,truck,truck
+25,bird,bird,dog,dog
+0,cat,cat,cat,dog
+22,deer,deer,ship,frog
+12,dog,dog,horse,horse
+4,frog,frog,deer,deer
+13,horse,horse,horse,dog
+1,ship,ship,automobile,automobile
+11,truck,truck,truck,truck

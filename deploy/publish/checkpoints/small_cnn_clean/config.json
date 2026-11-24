@@ -1,0 +1,51 @@
+{
+  "model": "small_cnn",
+  "mode": "clean",
+  "epochs": 3,
+  "batch_size": 128,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "optimizer_name": "adamw",
+  "scheduler_name": "cosine",
+  "epsilon": 0.00784313725490196,
+  "pgd_steps": 5,
+  "val_pgd_steps": 3,
+  "final_pgd_steps": 10,
+  "seed": 42,
+  "num_workers": 0,
+  "output_dir": "outputs/cpu_preview/small_cnn_clean",
+  "data_dir": "data",
+  "val_per_class": 100,
+  "max_train_batches": null,
+  "final_eval": true,
+  "resume": null,
+  "num_threads": null,
+  "amp": true,
+  "image_size": 32,
+  "mean": [
+    0.4914,
+    0.4822,
+    0.4465
+  ],
+  "std": [
+    0.247,
+    0.2435,
+    0.2616
+  ],
+  "num_classes": 10,
+  "class_names": [
+    "airplane",
+    "automobile",
+    "bird",
+    "cat",
+    "deer",
+    "dog",
+    "frog",
+    "horse",
+    "ship",
+    "truck"
+  ],
+  "pretrained": false,
+  "description": "Small CIFAR-10 CNN with global average pooling. On the order of 15-20 minutes per adversarial epoch on a laptop CPU.",
+  "robust_accuracy_target": 0.8
+}

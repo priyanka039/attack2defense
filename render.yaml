@@ -1,0 +1,26 @@
+# Blueprint: one Web Service hosts API + UI.
+# https://dashboard.render.com → New → Blueprint → connect this repo.
+#
+# Plan must be at least Standard (2 GB RAM). Free/Starter (512 MB) OOMs on PyTorch.
+
+services:
+  - type: web
+    name: attack2defense
+    runtime: docker
+    plan: standard
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: A2D_SECRET_KEY
+        generateValue: true
+      - key: A2D_DOWNLOAD_DATA
+        value: "true"
+      - key: A2D_MAX_TRAIN_EPOCHS
+        value: "5"
+      - key: A2D_MAX_TRAIN_BATCHES
+        value: "80"
+      - key: A2D_MAX_EVAL_IMAGES_PER_CLASS
+        value: "20"
+      - key: A2D_MAX_ATTACK_BATCH
+        value: "4"

@@ -1,0 +1,2 @@
+model,mode,epsilon,pgd_steps,images,clean_accuracy,fgsm_accuracy,pgd_accuracy,target,target_met
+resnet18,clean,0.01568627450980392,10,10000,0.9362,0.1822,0.0019,0.8,False

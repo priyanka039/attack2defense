@@ -1,0 +1,11 @@
+class,images,clean_accuracy,fgsm_accuracy,pgd_accuracy
+airplane,100,0.82,0.05,0.0
+automobile,100,0.89,0.0,0.0
+bird,100,0.53,0.0,0.0
+cat,100,0.31,0.0,0.0
+deer,100,0.57,0.06,0.0
+dog,100,0.7,0.0,0.0
+frog,100,0.74,0.03,0.0
+horse,100,0.82,0.0,0.0
+ship,100,0.7,0.12,0.0
+truck,100,0.94,0.04,0.0
