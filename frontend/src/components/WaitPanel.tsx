@@ -13,13 +13,6 @@ const TIPS = [
   "The reported ResNet-18 numbers on the Dashboard came from a GPU; demos here use a Small CNN.",
 ];
 
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m <= 0) return `${s}s`;
-  return `${m}m ${s.toString().padStart(2, "0")}s`;
-}
-
 function phaseCopy(status: JobStatus, message: string): { title: string; detail: string } {
   if (status === "queued") {
     return {
@@ -54,29 +47,18 @@ export function JobWaitPanel({
   status,
   progress,
   message,
-  startedAt,
-  createdAt,
   label = "Job progress",
 }: {
   status: JobStatus;
   progress: number;
   message: string;
   startedAt?: string | null;
-  createdAt: string;
+  createdAt?: string;
   label?: string;
 }) {
-  const origin = Date.parse(startedAt || createdAt);
-  const [elapsed, setElapsed] = useState(() => Math.max(0, Math.floor((Date.now() - origin) / 1000)));
   const [tipIndex, setTipIndex] = useState(0);
   const phase = phaseCopy(status, message);
   const indeterminate = status === "queued" || (status === "running" && progress < 0.02);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setElapsed(Math.max(0, Math.floor((Date.now() - origin) / 1000)));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [origin]);
 
   useEffect(() => {
     const id = window.setInterval(() => setTipIndex((i) => (i + 1) % TIPS.length), 8000);
@@ -85,12 +67,9 @@ export function JobWaitPanel({
 
   return (
     <div className="space-y-3 rounded-lg border border-line bg-raised/40 px-4 py-3" role="status" aria-live="polite">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-ink">{phase.title}</p>
-          <p className="mt-0.5 text-sm text-muted">{phase.detail}</p>
-        </div>
-        <p className="font-mono text-xs tabular-nums text-muted">elapsed {formatElapsed(elapsed)}</p>
+      <div>
+        <p className="text-sm font-semibold text-ink">{phase.title}</p>
+        <p className="mt-0.5 text-sm text-muted">{phase.detail}</p>
       </div>
       <div>
         <div className="mb-1.5 flex justify-between text-sm">
@@ -117,17 +96,7 @@ export function HostWakeBanner({
   onRetry: () => void;
   retrying?: boolean;
 }) {
-  const [seconds, setSeconds] = useState(0);
   const [tipIndex, setTipIndex] = useState(0);
-
-  useEffect(() => {
-    if (!offline) {
-      setSeconds(0);
-      return;
-    }
-    const id = window.setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [offline]);
 
   useEffect(() => {
     if (!offline) return;
@@ -163,7 +132,6 @@ export function HostWakeBanner({
             <div className="min-w-[12rem] flex-1">
               <ProgressBar value={0} label="API starting" indeterminate />
             </div>
-            <span className="font-mono text-xs tabular-nums text-muted">{formatElapsed(seconds)}</span>
             <button
               type="button"
               onClick={onRetry}

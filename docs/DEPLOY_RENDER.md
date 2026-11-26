@@ -1,5 +1,9 @@
 # Deploy on Render (single service)
 
+> Prefer AWS EC2? Use `bash scripts/ec2_redeploy.sh` on the server so the SQLite
+> database and JWT secret live in `~/a2d-persist` and survive image rebuilds
+> (you will not have to register a new account every deploy).
+
 One Docker Web Service serves the React UI and the FastAPI backend from the same URL.
 
 ## Requirements
