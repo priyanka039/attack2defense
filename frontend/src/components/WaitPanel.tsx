@@ -126,7 +126,7 @@ export function HostWakeBanner({
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
             {local
               ? "Start the backend with uvicorn, then click Try now."
-              : "PyTorch is loading into memory. This often takes under a minute on a small CPU — then the site stays responsive. Play the pixel game while you wait."}
+              : "PyTorch is loading into memory. This often takes under a minute on a small CPU — then the site stays responsive. Play Shield the classifier while you wait."}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="min-w-[12rem] flex-1">

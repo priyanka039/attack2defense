@@ -32,6 +32,10 @@ COPY deploy/publish/results ./results
 COPY deploy/publish/checkpoints ./checkpoints
 
 COPY --from=frontend /src/frontend/dist ./frontend/dist
+COPY scripts/docker_entrypoint.sh /app/docker_entrypoint.sh
+RUN chmod +x /app/docker_entrypoint.sh \
+    && mkdir -p /app/data \
+    && python -c "from torchvision.datasets import CIFAR10; CIFAR10('/app/data', train=True, download=True); CIFAR10('/app/data', train=False, download=True)"
 
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
@@ -46,4 +50,4 @@ ENV PYTHONPATH=/app \
     A2D_MAX_ATTACK_BATCH=4
 
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn backend.app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["/app/docker_entrypoint.sh"]

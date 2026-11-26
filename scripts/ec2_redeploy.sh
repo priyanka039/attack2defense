@@ -39,6 +39,7 @@ docker run -d --name "$NAME" --restart unless-stopped \
   -e MKL_NUM_THREADS=1 \
   "$IMAGE"
 
-echo "Container $NAME is up. Accounts/CIFAR persist under $PERSIST"
+echo "Container $NAME is up. Accounts + CIFAR persist under $PERSIST"
+echo "If CIFAR was missing, the entrypoint downloads it once into $PERSIST/data on first start."
 docker ps --filter "name=^/${NAME}$"
 docker logs --tail 15 "$NAME"

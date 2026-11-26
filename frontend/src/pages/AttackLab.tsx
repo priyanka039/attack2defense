@@ -633,14 +633,14 @@ export function AttackLab() {
             <div className="panel space-y-5 p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <Spinner label={busy ? "Running the attack on the server" : "Preparing the first attack"} />
-                <p className="text-xs text-muted">On a small CPU this can take a minute — play below meanwhile.</p>
+                <p className="text-xs text-muted">On a small CPU this can take a minute — play the game below.</p>
               </div>
               <BootPlayground />
             </div>
           )}
           {item && result && busy && (
             <Notice tone="warn" title="Attack running">
-              Updating the images on the server. You can keep painting the patch below while you wait.
+              Updating the images on the server. Keep defending the classifier below while you wait.
               <div className="mt-4">
                 <BootPlayground />
               </div>

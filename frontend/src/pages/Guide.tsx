@@ -235,7 +235,7 @@ export function Guide() {
       <div id="setup" className="scroll-mt-20">
         <Card
           title="Setup status"
-          description="What this server has installed. Live attacks need model weights; the reported numbers need only the results folder. On the free hosted demo, the first visit after idle sleep can take about a minute — a banner appears and retries automatically."
+          description="For visitors: if it says Demo ready, you can explore. Developer install details stay collapsed underneath."
         >
           <SetupStatus />
         </Card>
