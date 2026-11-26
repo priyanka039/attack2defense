@@ -2,6 +2,17 @@ import axios, { AxiosError } from "axios";
 
 const TOKEN_KEY = "a2d.token";
 
+/** Shown when the browser gets no HTTP response (sleeping host, crash, offline, etc.). */
+export function networkErrorMessage(): string {
+  const host = typeof window !== "undefined" ? window.location.hostname : "";
+  const local = host === "localhost" || host === "127.0.0.1";
+  if (local) {
+    return "Cannot reach the API. Start the backend with: uvicorn backend.app.main:create_app --factory";
+  }
+  // Hosted demos (e.g. Render Free) sleep when idle and can take ~1 minute to wake.
+  return "Cannot reach the server right now. Wait about a minute for it to wake up, then try again.";
+}
+
 /** Every failed request becomes one of these, with a message fit to show the user. */
 export class ApiProblem extends Error {
   readonly code: string;
@@ -30,13 +41,10 @@ export function toProblem(error: unknown): ApiProblem {
       return new ApiProblem(body.message, body.code ?? "error", body.field ?? null, axiosError.response?.status ?? null);
     }
     if (!axiosError.response) {
-      return new ApiProblem(
-        "Cannot reach the API. Start the backend with: uvicorn backend.app.main:create_app --factory",
-        "network_error",
-      );
+      return new ApiProblem(networkErrorMessage(), "network_error");
     }
     return new ApiProblem(
-      `The server answered ${axiosError.response.status} without details. Check the backend log.`,
+      `The server answered with status ${axiosError.response.status}. Try again in a moment.`,
       "http_error",
       null,
       axiosError.response.status,

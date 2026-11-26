@@ -7,10 +7,25 @@ export function SetupStatus() {
 
   if (setup.loading && !setup.data) return <Spinner label="Checking the server" />;
   if (setup.error) {
+    const local =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
     return (
-      <Notice tone="error" title="Cannot reach the API">
-        Start it with <code className="font-mono">python -m uvicorn backend.app.main:create_app --factory --port 8000</code>,
-        then reload this page.
+      <Notice tone="error" title="Cannot reach the server">
+        {local ? (
+          <>
+            Start it with{" "}
+            <code className="font-mono">
+              python -m uvicorn backend.app.main:create_app --factory --port 8000
+            </code>
+            , then reload this page.
+          </>
+        ) : (
+          <>
+            The hosted demo may be waking up or temporarily down. Wait about a minute, then click Check
+            again.
+          </>
+        )}
       </Notice>
     );
   }

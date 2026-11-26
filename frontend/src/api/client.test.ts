@@ -22,11 +22,12 @@ describe("toProblem", () => {
     expect(problem.status).toBe(422);
   });
 
-  it("explains how to start the backend when there is no response", () => {
+  it("explains a network failure when there is no response", () => {
     const problem = toProblem(new AxiosError("Network Error", "ERR_NETWORK"));
 
     expect(problem.code).toBe("network_error");
-    expect(problem.message).toContain("uvicorn");
+    // jsdom hostname is localhost, so the local developer hint is used.
+    expect(problem.message).toMatch(/uvicorn|wake up/i);
   });
 
   it("falls back to the status when the body has no error message", () => {
