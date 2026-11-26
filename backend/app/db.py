@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, create_engine
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -51,8 +51,20 @@ ACTIVE_STATUSES = ("queued", "running", "cancelling")
 
 class Database:
     def __init__(self, url: str):
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        connect_args = {}
+        if url.startswith("sqlite"):
+            # Background job threads and request threads share one file.
+            connect_args = {"check_same_thread": False, "timeout": 30}
         self.engine = create_engine(url, connect_args=connect_args)
+        if url.startswith("sqlite"):
+
+            @event.listens_for(self.engine, "connect")
+            def _sqlite_pragma(dbapi_connection, _connection_record) -> None:  # noqa: ANN001
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=30000")
+                cursor.close()
+
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)
         Base.metadata.create_all(self.engine)
 

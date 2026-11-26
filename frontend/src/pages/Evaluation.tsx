@@ -28,9 +28,10 @@ import { architectureName } from "../lib/results";
 const EPSILON_CHOICES = [1, 2, 4, 8, 16];
 
 type PresetId = "quick" | "thorough" | "custom";
+// perClass must stay within A2D_MAX_EVAL_IMAGES_PER_CLASS on the host (10 on Render Free).
 const PRESETS: Record<Exclude<PresetId, "custom">, { levels: number[]; perClass: number; steps: number }> = {
-  quick: { levels: [2, 4, 8], perClass: 10, steps: 10 },
-  thorough: { levels: [1, 2, 4, 8, 16], perClass: 50, steps: 20 },
+  quick: { levels: [2, 4, 8], perClass: 5, steps: 5 },
+  thorough: { levels: [2, 4, 8], perClass: 10, steps: 10 },
 };
 
 function EvaluationForm({ onStarted }: { onStarted: (job: EvaluationJob) => void }) {

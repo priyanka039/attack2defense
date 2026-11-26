@@ -26,9 +26,10 @@ import { usePolling, useResource } from "../lib/hooks";
 import { architectureName } from "../lib/results";
 
 type PresetId = "quick" | "careful";
+// Keep Monte Carlo counts small enough for a free CPU host.
 const PRESETS: Record<PresetId, { n0: number; n: number; perClass: number }> = {
-  quick: { n0: 25, n: 100, perClass: 5 },
-  careful: { n0: 100, n: 500, perClass: 10 },
+  quick: { n0: 10, n: 50, perClass: 2 },
+  careful: { n0: 25, n: 100, perClass: 5 },
 };
 
 function CertifyForm({ onStarted }: { onStarted: (job: CertifyJob) => void }) {

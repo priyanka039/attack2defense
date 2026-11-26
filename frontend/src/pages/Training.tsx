@@ -43,16 +43,17 @@ const BASE: TrainingParams = {
   adv_ratio: 1,
   sigma: 0.25,
   epochs: 2,
-  batch_size: 128,
+  batch_size: 64,
   lr: 0.001,
   optimizer: "adamw",
-  max_train_batches: 40,
-  val_per_class: 20,
+  max_train_batches: 20,
+  val_per_class: 10,
 };
 
+// Kept within Render Free server caps (see render.yaml A2D_MAX_*).
 const PRESETS: Record<Exclude<PresetId, "custom">, Partial<TrainingParams>> = {
-  quick: { model: "small_cnn", epochs: 2, max_train_batches: 40, pgd_steps: 3, batch_size: 128 },
-  stronger: { model: "small_cnn", epochs: 6, max_train_batches: 150, pgd_steps: 5, batch_size: 128 },
+  quick: { model: "small_cnn", epochs: 2, max_train_batches: 20, pgd_steps: 3, batch_size: 64 },
+  stronger: { model: "small_cnn", epochs: 3, max_train_batches: 40, pgd_steps: 3, batch_size: 64 },
 };
 
 /** Very rough images-per-second for one forward+backward pass, used only for the time hint. */
@@ -174,7 +175,7 @@ function TrainingForm({ onStarted }: { onStarted: (job: TrainingJob) => void }) 
         onChange={choosePreset}
         options={[
           { value: "quick", label: "Quick demo", hint: "Small CNN, 2 short epochs" },
-          { value: "stronger", label: "Stronger demo", hint: "Small CNN, 6 longer epochs" },
+          { value: "stronger", label: "Stronger demo", hint: "Small CNN, 3 fuller epochs" },
           { value: "custom", label: "Custom", hint: "Set everything below" },
         ]}
       />
