@@ -1,14 +1,15 @@
 import { useId, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 import type { JobStatus } from "../api/types";
-import { glossary, type GlossaryKey } from "../lib/glossary";
+import { glossary, type GlossaryEntry, type GlossaryKey } from "../lib/glossary";
 
 type Variant = "primary" | "attack" | "secondary" | "danger" | "ghost";
 type Size = "sm" | "md";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-clean text-paper hover:bg-clean/85 disabled:bg-clean/30 disabled:text-paper/70",
-  attack: "bg-adv text-paper hover:bg-adv/85 disabled:bg-adv/30 disabled:text-paper/70",
+  // Fire-orange accent: the only loud colour, reserved for primary CTAs.
+  primary: "bg-accent text-accent-ink hover:bg-accent/90 disabled:bg-accent/30 disabled:text-accent-ink/60",
+  attack: "bg-accent text-accent-ink hover:bg-accent/90 disabled:bg-accent/30 disabled:text-accent-ink/60",
   secondary: "border border-line-strong bg-raised text-ink hover:border-muted disabled:text-muted",
   danger: "border border-flag/50 bg-transparent text-flag hover:bg-flag-soft disabled:opacity-50",
   ghost: "text-ink hover:bg-raised disabled:text-muted",
@@ -144,21 +145,35 @@ export function Badge({ tone = "info", children }: { tone?: Tone | "adv"; childr
   return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${styles}`}>{children}</span>;
 }
 
-export function ProgressBar({ value, label, tone = "clean" }: { value: number; label: string; tone?: "clean" | "adv" }) {
+export function ProgressBar({
+  value,
+  label,
+  tone = "clean",
+  indeterminate = false,
+}: {
+  value: number;
+  label: string;
+  tone?: "clean" | "adv";
+  /** Pulse animation when the server has not reported real progress yet (queue / startup). */
+  indeterminate?: boolean;
+}) {
   const percent = Math.round(value * 100);
+  const fill = tone === "clean" ? "bg-clean" : "bg-adv";
   return (
     <div
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={percent}
+      aria-valuenow={indeterminate ? undefined : percent}
+      aria-valuetext={indeterminate ? "Waiting" : undefined}
       className="h-2 overflow-hidden rounded-full bg-raised"
     >
-      <div
-        className={`h-full rounded-full transition-[width] duration-500 ${tone === "clean" ? "bg-clean" : "bg-adv"}`}
-        style={{ width: `${percent}%` }}
-      />
+      {indeterminate ? (
+        <div className={`h-full w-1/3 rounded-full ${fill} animate-[a2d-indeterminate_1.2s_ease-in-out_infinite]`} />
+      ) : (
+        <div className={`h-full rounded-full transition-[width] duration-500 ${fill}`} style={{ width: `${percent}%` }} />
+      )}
     </div>
   );
 }
@@ -399,7 +414,7 @@ export function StepHeader({ step, title, children }: { step: number; title: str
 
 /** A small "?" button that explains a glossary term on hover, focus, or click. */
 export function InfoTip({ term }: { term: GlossaryKey }) {
-  const entry = glossary[term];
+  const entry: GlossaryEntry = glossary[term];
   const [open, setOpen] = useState(false);
   const tipId = useId();
   return (
@@ -425,7 +440,10 @@ export function InfoTip({ term }: { term: GlossaryKey }) {
           role="tooltip"
           className="absolute left-1/2 top-6 z-30 w-64 -translate-x-1/2 rounded-lg border border-line-strong bg-raised p-3 text-left text-xs font-normal leading-relaxed text-ink shadow-xl shadow-black/40"
         >
-          <span className="mb-1 block font-semibold">{entry.term}</span>
+          <span className="mb-1 block font-semibold">
+            {entry.term}
+            {entry.abbr && <span className="font-normal text-muted"> ({entry.abbr})</span>}
+          </span>
           {entry.short}
         </span>
       )}

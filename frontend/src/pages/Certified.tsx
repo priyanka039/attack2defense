@@ -14,7 +14,6 @@ import {
   EmptyState,
   Notice,
   PageHeader,
-  ProgressBar,
   Segmented,
   Slider,
   Spinner,
@@ -22,6 +21,7 @@ import {
   Term,
 } from "../components/ui";
 import { dateTime, percent } from "../lib/format";
+import { JobWaitPanel } from "../components/WaitPanel";
 import { usePolling, useResource } from "../lib/hooks";
 import { architectureName } from "../lib/results";
 
@@ -135,7 +135,8 @@ function Jobs() {
   const list = jobs.data ?? [];
   const current = list.find((job) => job.id === selected) ?? list[0];
 
-  usePolling(() => void jobs.reload(), list.some((job) => isActive(job.status)));
+  const active = list.some((job) => isActive(job.status));
+  usePolling(() => void jobs.reload(), active, list.some((job) => job.status === "queued") ? 800 : 1500);
 
   async function cancel(id: string) {
     try {
@@ -192,13 +193,19 @@ function Jobs() {
             <Card>
               {isActive(current.status) && (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <span className="text-muted">{current.message}</span>
+                  <div className="flex justify-end">
                     <Button variant="danger" size="sm" onClick={() => cancel(current.id)} disabled={current.status === "cancelling"}>
                       Stop certification
                     </Button>
                   </div>
-                  <ProgressBar value={current.progress} label="Certification progress" />
+                  <JobWaitPanel
+                    status={current.status}
+                    progress={current.progress}
+                    message={current.message}
+                    startedAt={current.started_at}
+                    createdAt={current.created_at}
+                    label="Certification progress"
+                  />
                 </div>
               )}
               {current.error && <Notice tone="error" title="Certification failed">{current.error}</Notice>}

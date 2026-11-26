@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useSetup } from "../lib/setup";
 import { useTheme } from "../lib/theme";
 import type { Theme } from "../lib/tokens";
+import { HostWakeBanner } from "./WaitPanel";
 
 interface NavItem {
   to: string;
@@ -43,7 +44,7 @@ function Brand() {
       <svg viewBox="0 0 32 32" className="h-8 w-8" aria-hidden="true">
         <rect width="32" height="32" rx="7" className="fill-raised" />
         <rect x="7" y="7" width="18" height="18" rx="2" fill="none" strokeWidth="2.5" className="stroke-clean" />
-        <rect x="12" y="12" width="8" height="8" rx="1" className="fill-adv" />
+        <rect x="12" y="12" width="8" height="8" rx="1" className="fill-accent" />
       </svg>
       <span className="font-display text-lg font-semibold tracking-tight">Attack2Defense</span>
     </Link>
@@ -134,6 +135,7 @@ function ThemeButton() {
 
 export function Layout() {
   const { user, ready, logout } = useAuth();
+  const setup = useSetup();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -206,7 +208,9 @@ export function Layout() {
   );
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[16.5rem_1fr]">
+    <>
+      <HostWakeBanner offline={Boolean(setup.error)} onRetry={() => void setup.reload()} retrying={setup.loading} />
+      <div className="min-h-screen lg:grid lg:grid-cols-[16.5rem_1fr]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-clean focus:px-3 focus:py-2 focus:text-paper">
         Skip to content
       </a>
@@ -244,5 +248,6 @@ export function Layout() {
         <Outlet />
       </main>
     </div>
+    </>
   );
 }

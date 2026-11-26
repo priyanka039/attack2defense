@@ -158,7 +158,7 @@ class JobRunner:
                     return
                 job.status = "running"
                 job.started_at = utcnow()
-                job.message = "Starting"
+                job.message = "Starting — loading model and data (first run may download CIFAR-10)"
             logger.info("Running job %s", job_id)
             result = function(JobContext(job_id, self._database, event))
             self._finish(job_id, "succeeded", progress=1.0, message="Finished", result=result)

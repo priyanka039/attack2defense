@@ -25,6 +25,7 @@ import type { GlossaryKey } from "../lib/glossary";
 import { usePolling, useResource } from "../lib/hooks";
 import { architectureName } from "../lib/results";
 import { useSetup } from "../lib/setup";
+import { JobWaitPanel } from "../components/WaitPanel";
 
 const DEFENSES: { mode: TrainingParams["mode"]; title: string; text: string }[] = [
   { mode: "clean", title: "No defense", text: "Ordinary training. The baseline that attacks break." },
@@ -293,8 +294,9 @@ function TrainingForm({ onStarted }: { onStarted: (job: TrainingJob) => void }) 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <p className="text-sm text-muted">
           Estimated time on this server ({gpu ? "GPU" : "CPU"}):{" "}
-          <span className="font-medium text-ink">{duration(estimateSeconds(params, gpu))}</span>. Demo runs are short; the
-          reported models trained for 30 full epochs on a GPU.
+          <span className="font-medium text-ink">{duration(estimateSeconds(params, gpu))}</span>
+          {gpu ? "" : " (first run can add a minute to download CIFAR-10)"}. Demo runs are short; the reported models
+          trained for 30 full epochs on a GPU.
         </p>
         <Button type="submit" busy={busy}>
           Start training
@@ -328,20 +330,33 @@ function JobDetail({ job, onCancel }: { job: TrainingJob; onCancel: () => void }
         )}
       </div>
 
-      <div>
-        <div className="mb-1.5 flex justify-between text-sm">
-          <span className="text-muted">{job.message}</span>
-          <span className="font-mono tabular-nums">{percent(job.progress, 0)}</span>
+      {isActive(job.status) ? (
+        <JobWaitPanel
+          status={job.status}
+          progress={job.progress}
+          message={job.message}
+          startedAt={job.started_at}
+          createdAt={job.created_at}
+          label="Training progress"
+        />
+      ) : (
+        <div>
+          <div className="mb-1.5 flex justify-between text-sm">
+            <span className="text-muted">{job.message}</span>
+            <span className="font-mono tabular-nums">{percent(job.progress, 0)}</span>
+          </div>
+          <ProgressBar value={job.progress} label="Training progress" />
         </div>
-        <ProgressBar value={job.progress} label="Training progress" />
-      </div>
+      )}
 
       {job.error && <Notice tone="error" title="Training failed">{job.error}</Notice>}
 
       {job.history.length > 0 ? (
         <TrainingCurves history={job.history} height={220} />
       ) : (
-        isActive(job.status) && <p className="text-sm text-muted">Charts appear after the first epoch finishes.</p>
+        isActive(job.status) && (
+          <p className="text-sm text-muted">Accuracy charts appear after the first epoch finishes — hang tight.</p>
+        )
       )}
 
       {summary && job.result && (
@@ -375,7 +390,9 @@ export function Training() {
     if (!selected && list.length) setSelected(list[0].id);
   }, [list, selected]);
 
-  usePolling(() => void jobs.reload(), list.some((job) => isActive(job.status)));
+  const active = list.some((job) => isActive(job.status));
+  const queued = list.some((job) => job.status === "queued");
+  usePolling(() => void jobs.reload(), active, queued ? 800 : 1500);
 
   async function cancel(id: string) {
     try {

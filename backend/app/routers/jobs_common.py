@@ -12,7 +12,12 @@ from backend.app.schemas import JobOut
 
 def create_job(services: Services, user: User, kind: str, params: dict) -> Job:
     with services.database.session() as session:
-        job = Job(user_id=user.id, kind=kind, params=params)
+        job = Job(
+            user_id=user.id,
+            kind=kind,
+            params=params,
+            message="In the queue — one job at a time on this server",
+        )
         session.add(job)
         session.flush()
         return job

@@ -1,49 +1,57 @@
 @import "tailwindcss";
 
-/* Dark "security lab" theme by default; [data-theme="light"] below overrides it.
-   Chart colours in src/lib/tokens.ts mirror both palettes.
-   Teal always means defense / clean / held; pink always means attack / adversarial / fooled. */
+/*
+  Palette: steel gray base + ice blue calm + one fire-orange accent.
+  Accent is reserved for call-to-action buttons only.
+  Ice blue (clean) = defense / success / links.
+  Soft rose (adv) = attack / fooled — data colour, never a CTA fill.
+*/
 @theme {
-  --color-paper: #0b0f17;
-  --color-surface: #121826;
-  --color-raised: #1a2233;
-  --color-ink: #e6edf6;
-  --color-muted: #93a1b5;
-  --color-line: #273246;
-  --color-line-strong: #3a4760;
+  --color-paper: #0f1319;
+  --color-surface: #171c24;
+  --color-raised: #1f2630;
+  --color-ink: #e7edf4;
+  --color-muted: #8b97a8;
+  --color-line: #2b3441;
+  --color-line-strong: #3e4a5a;
 
-  --color-clean: #2dd4bf;
-  --color-clean-soft: #0f2c2c;
-  --color-adv: #ff5c93;
-  --color-adv-soft: #36152a;
-  --color-flag: #ff7a7a;
+  --color-clean: #7eb6e0;
+  --color-clean-soft: #152433;
+  --color-adv: #c48a9a;
+  --color-adv-soft: #2a1c22;
+  --color-flag: #e07070;
   --color-flag-soft: #3a1a1e;
-  --color-warn: #f5b84a;
-  --color-warn-soft: #33270f;
+  --color-warn: #d4a35c;
+  --color-warn-soft: #2f2616;
+
+  --color-accent: #ff5c1a;
+  --color-accent-ink: #140a04;
 
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Archivo Variable", "IBM Plex Sans", ui-sans-serif, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 }
 
-/* Accent shades are darker than in the dark theme so text keeps at least 4.5:1 contrast on white. */
 :root[data-theme="light"] {
-  --color-paper: #f4f6fa;
+  --color-paper: #eef1f5;
   --color-surface: #ffffff;
-  --color-raised: #eaeef4;
-  --color-ink: #111827;
-  --color-muted: #536175;
-  --color-line: #dbe1ea;
-  --color-line-strong: #bcc6d4;
+  --color-raised: #e3e8ef;
+  --color-ink: #152033;
+  --color-muted: #5b6b7d;
+  --color-line: #d0d7e2;
+  --color-line-strong: #b4bfce;
 
-  --color-clean: #0f766e;
-  --color-clean-soft: #e1f4f1;
-  --color-adv: #c2185b;
-  --color-adv-soft: #fce8f0;
+  --color-clean: #2a6f9e;
+  --color-clean-soft: #e5f1f8;
+  --color-adv: #9a4d5f;
+  --color-adv-soft: #f7ecef;
   --color-flag: #b42332;
   --color-flag-soft: #fdeaec;
-  --color-warn: #a35a00;
-  --color-warn-soft: #fdf1dc;
+  --color-warn: #a67c00;
+  --color-warn-soft: #f7f0d6;
+
+  --color-accent: #e04a12;
+  --color-accent-ink: #ffffff;
 
   color-scheme: light;
 }
@@ -165,5 +173,14 @@
 
   details > summary::-webkit-details-marker {
     display: none;
+  }
+}
+
+@keyframes a2d-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
   }
 }

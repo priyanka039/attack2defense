@@ -37,7 +37,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(20), default="queued")
     params: Mapped[dict] = mapped_column(JSON, default=dict)
     progress: Mapped[float] = mapped_column(Float, default=0.0)
-    message: Mapped[str] = mapped_column(Text, default="Waiting to start")
+    message: Mapped[str] = mapped_column(Text, default="In the queue — one job at a time on this server")
     history: Mapped[list] = mapped_column(JSON, default=list)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
