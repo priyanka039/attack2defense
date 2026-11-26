@@ -209,7 +209,11 @@ export function Layout() {
 
   return (
     <>
-      <HostWakeBanner offline={Boolean(setup.error)} onRetry={() => void setup.reload()} retrying={setup.loading} />
+      <HostWakeBanner
+        offline={Boolean(setup.error) || (setup.loading && !setup.data)}
+        onRetry={() => void setup.reload()}
+        retrying={setup.loading}
+      />
       <div className="min-h-screen lg:grid lg:grid-cols-[16.5rem_1fr]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-clean focus:px-3 focus:py-2 focus:text-paper">
         Skip to content

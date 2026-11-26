@@ -10,12 +10,12 @@ const SetupContext = createContext<Resource<SetupReport> | null>(null);
 export function SetupProvider({ children }: { children: ReactNode }) {
   const setup = useResource(api.setup);
 
-  // Free hosts sleep when idle; keep probing so the wake banner can clear without a full reload.
+  // Keep probing while the API is booting (PyTorch import) or briefly unreachable.
   useEffect(() => {
-    if (!setup.error || setup.loading) return;
-    const id = window.setTimeout(() => void setup.reload(), 8000);
+    if ((!setup.error && setup.data) || setup.loading) return;
+    const id = window.setTimeout(() => void setup.reload(), 6000);
     return () => window.clearTimeout(id);
-  }, [setup.error, setup.loading, setup.reload]);
+  }, [setup.error, setup.data, setup.loading, setup.reload]);
 
   return <SetupContext.Provider value={setup}>{children}</SetupContext.Provider>;
 }

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
 import type { JobStatus } from "../api/types";
+import { BootPlayground } from "./BootPlayground";
 import { ProgressBar } from "./ui";
 
 const TIPS = [
   "An invisible change of 2/255 brightness can drop an undefended model from ~94% to ~6%.",
   "PGD is stronger than FGSM because it takes many small steps instead of one big one.",
   "Adversarial training teaches the model on attacked images, so it keeps accuracy under attack.",
-  "Free demo hosts sleep when idle — the first click after a break can take about a minute.",
+  "The first open after a restart loads PyTorch into memory — that can take about a minute on a small CPU.",
   "Only one heavy job runs at a time on this server, so a second run waits in line.",
   "The reported ResNet-18 numbers on the Dashboard came from a GPU; demos here use a Small CNN.",
 ];
@@ -23,7 +24,7 @@ function phaseCopy(status: JobStatus, message: string): { title: string; detail:
   if (status === "queued") {
     return {
       title: "In the queue",
-      detail: "One job runs at a time on this free server. Yours will start as soon as the worker is free.",
+      detail: "One job runs at a time on this server. Yours will start as soon as the worker is free.",
     };
   }
   if (status === "cancelling") {
@@ -48,7 +49,7 @@ function phaseCopy(status: JobStatus, message: string): { title: string; detail:
   };
 }
 
-/** Progress + elapsed time + rotating facts so a long free-host wait feels intentional. */
+/** Progress + elapsed time + rotating facts so a long wait feels intentional. */
 export function JobWaitPanel({
   status,
   progress,
@@ -106,7 +107,7 @@ export function JobWaitPanel({
   );
 }
 
-/** Top-of-app banner when the free host is waking or unreachable. */
+/** Full wait panel when the API is still booting (PyTorch import) or unreachable. */
 export function HostWakeBanner({
   offline,
   onRetry,
@@ -117,6 +118,7 @@ export function HostWakeBanner({
   retrying?: boolean;
 }) {
   const [seconds, setSeconds] = useState(0);
+  const [tipIndex, setTipIndex] = useState(0);
 
   useEffect(() => {
     if (!offline) {
@@ -129,10 +131,15 @@ export function HostWakeBanner({
 
   useEffect(() => {
     if (!offline) return;
-    // Auto-retry every 8s so mentors do not need to mash reload.
-    const id = window.setInterval(() => onRetry(), 8000);
+    const id = window.setInterval(() => onRetry(), 6000);
     return () => window.clearInterval(id);
   }, [offline, onRetry]);
+
+  useEffect(() => {
+    if (!offline) return;
+    const id = window.setInterval(() => setTipIndex((i) => (i + 1) % TIPS.length), 7000);
+    return () => window.clearInterval(id);
+  }, [offline]);
 
   if (!offline) return null;
 
@@ -141,25 +148,39 @@ export function HostWakeBanner({
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   return (
-    <div className="border-b border-warn/40 bg-warn-soft px-4 py-3 text-sm text-ink" role="status" aria-live="polite">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-        <p className="leading-relaxed">
-          <span className="font-semibold text-warn">
-            {local ? "API not reachable" : "Waking the free demo server"}
-          </span>
-          {" — "}
-          {local
-            ? "Start the backend, then retry."
-            : `This usually takes under a minute after idle sleep. Waiting ${seconds}s… Dashboard numbers still load once it is up.`}
-        </p>
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={retrying}
-          className="shrink-0 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-xs font-semibold hover:border-muted disabled:opacity-60"
-        >
-          {retrying ? "Checking…" : "Try now"}
-        </button>
+    <div className="border-b border-line bg-surface" role="status" aria-live="polite">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:px-10 lg:py-8">
+        <div>
+          <p className="font-display text-xl font-semibold text-ink sm:text-2xl">
+            {local ? "API not reachable" : "Starting the model server"}
+          </p>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+            {local
+              ? "Start the backend with uvicorn, then click Try now."
+              : "PyTorch is loading into memory. This often takes under a minute on a small CPU — then the site stays responsive. Play the pixel game while you wait."}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="min-w-[12rem] flex-1">
+              <ProgressBar value={0} label="API starting" indeterminate />
+            </div>
+            <span className="font-mono text-xs tabular-nums text-muted">{formatElapsed(seconds)}</span>
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retrying}
+              className="rounded-lg border border-line-strong bg-raised px-3 py-1.5 text-xs font-semibold text-ink hover:border-muted disabled:opacity-60"
+            >
+              {retrying ? "Checking…" : "Try now"}
+            </button>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-muted">
+            <span className="font-medium text-ink">Did you know · </span>
+            {TIPS[tipIndex]}
+          </p>
+        </div>
+        <div className="justify-self-center lg:justify-self-end">
+          <BootPlayground />
+        </div>
       </div>
     </div>
   );
