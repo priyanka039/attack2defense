@@ -7,49 +7,45 @@ import { AccuracyTrack, type TrackRow } from "../components/AccuracyTrack";
 import { SetupStatus } from "../components/SetupStatus";
 import { buttonClass, Card } from "../components/ui";
 import { epsilonLabel, percent } from "../lib/format";
-import { glossary, type GlossaryKey } from "../lib/glossary";
+import { glossary, type GlossaryEntry, type GlossaryKey } from "../lib/glossary";
 import { useResource } from "../lib/hooks";
 import { architectureName, headline } from "../lib/results";
 import { guideFlag } from "../lib/setup";
 
-const STEPS: { title: string; body: string; screen: string; to: string; action: string }[] = [
+const STEPS: { title: string; body: string; to: string; action: string }[] = [
   {
-    title: "Train an ordinary classifier",
-    body: "A ResNet-18 learns to sort 32x32 CIFAR-10 photos into ten classes: airplane, car, bird, cat, deer, dog, frog, horse, ship, truck. On clean test images it is right more than 9 times out of 10.",
-    screen: "Dashboard",
+    title: "Train a baseline classifier",
+    body: "A ResNet-18 is trained on CIFAR-10: 32×32 colour images in ten classes, from airplane to truck. Without any defense it classifies over 90% of unseen test images correctly.",
     to: "/",
-    action: "See the baseline numbers",
+    action: "View baseline results",
   },
   {
-    title: "Attack it with invisible noise",
-    body: "FGSM and PGD use the model's own gradients to find the worst tiny change for each image. Every pixel moves by at most 2 brightness levels out of 255, yet the model's accuracy collapses.",
-    screen: "Attack lab",
+    title: "Attack it",
+    body: "FGSM and PGD use the model's own gradients to find, for each image, the small perturbation that most increases its error. No pixel changes by more than 2 intensity levels out of 255.",
     to: "/attack",
-    action: "Fool a model yourself",
+    action: "Open the attack lab",
   },
   {
     title: "Defend it with adversarial training",
-    body: "Retrain the model on attacked images, made fresh every batch against its current weights. It learns features the attack cannot easily push around, at a small cost in clean accuracy.",
-    screen: "Training",
+    body: "The model is retrained on attacked images, regenerated every batch against its current weights. It learns features the attack cannot easily exploit, at a small cost in clean accuracy.",
     to: "/training",
     action: "Train a defended model",
   },
   {
-    title: "Compare, then prove",
-    body: "Evaluate every model on the same held-out images at several attack strengths and flag anything under the 80% target. Randomized smoothing goes further and proves a safe radius for each image.",
-    screen: "Evaluation and Certified defense",
+    title: "Evaluate and certify",
+    body: "Every model is tested on the same held-out images at several attack strengths and checked against the 80% target. Randomized smoothing adds a provable robustness radius for each image.",
     to: "/evaluation",
     action: "Compare models",
   },
 ];
 
 const KEY_TERMS: GlossaryKey[] = [
+  "cleanAccuracy",
+  "robustAccuracy",
   "epsilon",
   "fgsm",
   "pgd",
   "adversarialTraining",
-  "cleanAccuracy",
-  "robustAccuracy",
   "advRatio",
   "certifiedRadius",
 ];
@@ -69,13 +65,21 @@ export function Guide() {
   const rows: TrackRow[] =
     baseline?.summary && defended?.summary
       ? [
-          { label: "No defense,", detail: "ordinary test images", value: baseline.summary.clean_accuracy, tone: "clean" },
-          { label: "No defense,", detail: "after a PGD attack", value: baseline.summary.pgd_accuracy, tone: "adv" },
-          { label: `${defended.label},`, detail: "after the same attack", value: defended.summary.pgd_accuracy, tone: "clean" },
+          { label: "Undefended model", detail: "Clean test images", value: baseline.summary.clean_accuracy, tone: "clean" },
+          { label: "Undefended model", detail: "Under PGD attack", value: baseline.summary.pgd_accuracy, tone: "adv" },
+          { label: defended.label, detail: "Under the same attack", value: defended.summary.pgd_accuracy, tone: "clean" },
         ]
       : [];
 
-  const levels = epsilon ? Math.round(epsilon * 255) : 2;
+  const budget = epsilon ? epsilonLabel(epsilon) : "2/255";
+  const specs: [string, string][] = baseline?.summary
+    ? [
+        ["Model", architectureName(baseline.architecture)],
+        ["Test set", `${baseline.summary.images.toLocaleString()} CIFAR-10 images`],
+        ["Attack", `PGD, ${baseline.summary.pgd_steps} steps`],
+        ["Budget (ε)", budget],
+      ]
+    : [];
 
   return (
     <div className="space-y-14">
@@ -84,16 +88,16 @@ export function Guide() {
         <div className="relative grid gap-10 p-6 sm:p-10 lg:grid-cols-[1.05fr_1fr] lg:items-center">
           <div>
             <h1 className="text-4xl font-semibold leading-[1.1] sm:text-5xl">
-              Can a neural network be fooled by changes you cannot see?
+              Adversarial robustness for image classifiers
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">
-              Yes. Shift every pixel of a photo by {levels} brightness levels out of 255 in exactly the wrong
-              direction, and a model that was{" "}
-              {baseline?.summary ? percent(baseline.summary.clean_accuracy, 0) : "over 90%"} accurate starts guessing. Attack2Defense measures that failure on
-              CIFAR-10, then trains a model that holds up under the same attack.
+              A perturbation of at most {budget} per pixel, invisible to the human eye, can take an image classifier
+              from {baseline?.summary ? percent(baseline.summary.clean_accuracy) : "over 90%"} accuracy to
+              {baseline?.summary ? ` ${percent(baseline.summary.pgd_accuracy)}` : " near zero"}. Attack2Defense
+              reproduces that failure on CIFAR-10 and measures how much of it adversarial training recovers.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <Link to={user ? "/attack" : "/login"} state={{ from: "/attack" }} className={buttonClass("attack")}>
+              <Link to={user ? "/attack" : "/login"} state={{ from: "/attack" }} className={buttonClass("primary")}>
                 {user ? "Open the attack lab" : "Log in and try an attack"}
               </Link>
               <Link to="/" className={buttonClass("secondary")}>
@@ -105,11 +109,18 @@ export function Guide() {
           <div className="rounded-xl border border-line bg-paper/70 p-5 backdrop-blur-sm">
             {rows.length ? (
               <>
-                <p className="mb-4 text-sm text-muted">
-                  {architectureName(baseline?.architecture)} on {baseline?.summary?.images.toLocaleString()} unseen
-                  test images, attack budget {epsilon ? epsilonLabel(epsilon) : "2/255"}
-                </p>
-                <AccuracyTrack rows={rows} target={target} />
+                <h2 className="text-sm font-semibold">Reported result</h2>
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 border-b border-line pb-4 text-xs">
+                  {specs.map(([name, value]) => (
+                    <div key={name}>
+                      <dt className="text-muted">{name}</dt>
+                      <dd className="mt-0.5 font-medium text-ink">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="mt-4">
+                  <AccuracyTrack rows={rows} target={target} />
+                </div>
               </>
             ) : (
               <p className="text-sm text-muted">
@@ -127,7 +138,8 @@ export function Guide() {
           How the project works
         </h2>
         <p className="mt-2 max-w-2xl text-muted">
-          Four stages, each with its own screen. Follow them in order the first time.
+          The workflow has four stages, each with its own screen. Working through them in order is the quickest way
+          to understand the results.
         </p>
         <ol className="mt-6 grid gap-4 md:grid-cols-2">
           {STEPS.map((step, index) => (
@@ -144,8 +156,7 @@ export function Guide() {
                 <h3 className="text-lg font-semibold">{step.title}</h3>
               </div>
               <p className="mt-3 flex-1 text-sm leading-relaxed text-muted">{step.body}</p>
-              <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
-                <span className="text-xs text-muted">Screen: {step.screen}</span>
+              <div className="mt-4 border-t border-line pt-3">
                 <Link to={step.to} className="link text-sm">
                   {step.action}
                 </Link>
@@ -160,30 +171,31 @@ export function Guide() {
           <h2 id="takeaway-heading" className="sr-only">
             What the numbers mean
           </h2>
-          <div className="panel p-5">
-            <p className="text-sm font-semibold text-adv">The attack works</p>
+          <div className="panel border-t-2 border-t-adv p-5">
+            <h3 className="text-sm font-semibold">Attack impact</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              Without a defense, PGD drops accuracy by{" "}
-              {((baseline.summary.clean_accuracy - baseline.summary.pgd_accuracy) * 100).toFixed(1)} points. The
-              changed images look identical to a person.
+              PGD lowers the undefended model's accuracy by{" "}
+              {((baseline.summary.clean_accuracy - baseline.summary.pgd_accuracy) * 100).toFixed(1)} percentage
+              points, although the attacked images are visually indistinguishable from the originals.
             </p>
           </div>
-          <div className="panel p-5">
-            <p className="text-sm font-semibold text-clean">The defense works</p>
+          <div className="panel border-t-2 border-t-clean p-5">
+            <h3 className="text-sm font-semibold">Defense recovery</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              Adversarial training recovers {percent(defended.summary.pgd_accuracy)} under the same attack, for{" "}
-              {((baseline.summary.clean_accuracy - defended.summary.clean_accuracy) * 100).toFixed(1)} points of
-              clean accuracy.
+              Adversarial training restores accuracy under the same attack to{" "}
+              {percent(defended.summary.pgd_accuracy)}, at a cost of{" "}
+              {((baseline.summary.clean_accuracy - defended.summary.clean_accuracy) * 100).toFixed(1)} points on
+              clean images.
             </p>
           </div>
-          <div className="panel p-5">
-            <p className="text-sm font-semibold text-warn">The limits are real</p>
+          <div className="panel border-t-2 border-t-warn p-5">
+            <h3 className="text-sm font-semibold">Limitations</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted">
               The {percent(target, 0)} target is{" "}
               {defended.summary.pgd_accuracy >= target
                 ? "met"
-                : `${((target - defended.summary.pgd_accuracy) * 100).toFixed(1)} points away`}
-              , and protection fades for attacks bigger than the {epsilon ? epsilonLabel(epsilon) : "trained"} budget.
+                : `missed by ${((target - defended.summary.pgd_accuracy) * 100).toFixed(1)} points`}
+              , and protection weakens against attacks larger than the {budget} budget used in training.
             </p>
           </div>
         </section>
@@ -191,21 +203,28 @@ export function Guide() {
 
       <section aria-labelledby="terms-heading">
         <h2 id="terms-heading" className="text-2xl font-semibold">
-          Key ideas in plain English
+          Key terms
         </h2>
         <p className="mt-2 max-w-2xl text-muted">
-          These words appear throughout the app. Look for the small question-mark buttons next to controls for the
-          same explanations in context.
+          Definitions used throughout the app. The ? button beside a control shows the same definition in context.
         </p>
-        <dl className="mt-6 grid gap-x-8 gap-y-5 md:grid-cols-2">
+        <dl className="panel mt-6 divide-y divide-line">
           {KEY_TERMS.map((key) => {
-            const entry = glossary[key];
+            const entry: GlossaryEntry = glossary[key];
             return (
-              <div key={key} className="border-l-2 border-line-strong pl-4">
-                <dt className="font-semibold">{entry.term}</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-muted">
-                  {entry.short}
-                  {"long" in entry && entry.long && <span className="mt-1 block text-ink/70">{entry.long}</span>}
+              <div key={key} className="grid gap-2 p-5 md:grid-cols-[minmax(12rem,18rem)_1fr] md:gap-8">
+                <dt className="text-[15px] font-semibold leading-snug">
+                  {entry.term}
+                  {entry.abbr && <span className="ml-1.5 font-normal text-muted">({entry.abbr})</span>}
+                </dt>
+                <dd className="max-w-2xl text-sm leading-relaxed text-muted">
+                  <p className="text-ink">{entry.short}</p>
+                  {entry.formula && (
+                    <code className="mt-3 block w-fit max-w-full overflow-x-auto rounded-md border border-line bg-raised px-3 py-2 font-mono text-[13px] text-ink">
+                      {entry.formula}
+                    </code>
+                  )}
+                  {entry.long && <p className="mt-2">{entry.long}</p>}
                 </dd>
               </div>
             );
@@ -216,7 +235,7 @@ export function Guide() {
       <div id="setup" className="scroll-mt-20">
         <Card
           title="Setup status"
-          description="What this server has installed. Live attacks need model weights; the reported numbers need only the results folder."
+          description="What this server has installed. Live attacks need model weights; the reported numbers need only the results folder. On the free hosted demo, the first visit after idle sleep can take about a minute — a banner appears and retries automatically."
         >
           <SetupStatus />
         </Card>
