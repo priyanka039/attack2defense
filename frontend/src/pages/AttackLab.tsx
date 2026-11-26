@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { toProblem, type ApiProblem } from "../api/client";
 import { api } from "../api/endpoints";
 import type { AttackItem, AttackKind, AttackRequest, AttackResponse, ModelEntry, Prediction } from "../api/types";
+import { BootPlayground } from "../components/BootPlayground";
 import { SuccessPerStep } from "../components/charts";
 import {
   Button,
@@ -404,7 +405,7 @@ export function AttackLab() {
     <div className="space-y-8">
       <PageHeader title="Attack lab">
         Pick a model and an image, then choose how hard to attack. The result updates as you move the controls.
-        Pink means the attack fooled the model; teal means the model held.
+        Rose means the attack fooled the model; ice blue means the model held.
       </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-[22rem_1fr]">
@@ -629,9 +630,21 @@ export function AttackLab() {
           </h2>
           {problem && <Notice tone="error">{problem.message}</Notice>}
           {!item && !problem && (
-            <div className="panel flex h-64 items-center justify-center">
-              <Spinner label="Running the first attack" />
+            <div className="panel space-y-5 p-5 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Spinner label={busy ? "Running the attack on the server" : "Preparing the first attack"} />
+                <p className="text-xs text-muted">On a small CPU this can take a minute — play below meanwhile.</p>
+              </div>
+              <BootPlayground />
             </div>
+          )}
+          {item && result && busy && (
+            <Notice tone="warn" title="Attack running">
+              Updating the images on the server. You can keep painting the patch below while you wait.
+              <div className="mt-4">
+                <BootPlayground />
+              </div>
+            </Notice>
           )}
           {item && result && (
             <>
